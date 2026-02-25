@@ -1,0 +1,19 @@
+Package: mscPostX
+Type: Package
+Title: Post-Synthetic-Control Hierarchical Modeling with General Weight Inputs
+Version: 0.0.1
+Authors@R: person("Andre", "Bonfrer", role = c("aut","cre"), email = "...")
+Description: Generalizes mscPost to accept synthetic-control / augmented-synth weights from multiple sources.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+  data.table,
+  Matrix,
+  stats,
+  utils,
+  MASS,
+  truncnorm
+Suggests:
+  MCMCpack
