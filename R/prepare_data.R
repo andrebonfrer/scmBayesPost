@@ -127,8 +127,10 @@ prepare_data_general <- function(dta,
   n_per <- length(pseudo_ids[[1]]) * Tn
 
   # Precompute indexing table once
-  dta_idx <- dta[, .(id = as.character(get(id_col)),
-                     wID = get(time_col))]
+  dta_idx <- data.table::data.table(
+    id  = as.character(dta[[id_col]]),
+    wID = dta[[time_col]]
+  )
 
   # Build X_list, y_list, w_list per treated unit
   X_list <- vector("list", J0)
@@ -138,29 +140,64 @@ prepare_data_general <- function(dta,
 
   if (verbose) message("Creating treated-specific pseudo-panels...")
 
+  # Defensive: ensure types and alignment
+  data.table::setDT(dta_idx)
+  stopifnot(nrow(dta_idx) == nrow(X_mm))
+  stopifnot(length(y_vec) == nrow(dta_idx))
+  stopifnot(all(c("id", "wID") %in% names(dta_idx)))
+
+  # Ensure id is character (matching W rownames)
+  dta_idx[, id := as.character(id)]
+  wn <- rownames(W)
+  if (is.null(wn)) stop("W must have rownames = unit ids.")
+  if (!is.character(wn)) wn <- as.character(wn)
+  rownames(W) <- wn
+
+  # Build a fast lookup from id -> row weight for each j0 (avoid names indexing in a loop)
+  # Also precompute row indices for each pseudo panel
+  row_idx_list <- vector("list", J0)
+
+  id_vec <- dta_idx[["id"]]  # plain vector
   for (j0 in seq_len(J0)) {
-    tr <- treated_ids[j0]
     ids_j <- pseudo_ids[[j0]]
+    # integer row positions (fast + unambiguous)
+    row_idx_list[[j0]] <- which(id_vec %chin% ids_j)
+    if (length(row_idx_list[[j0]]) == 0L) {
+      stop(sprintf("Pseudo-panel %d has zero rows. Check pseudo_ids and dta_idx$id.", j0))
+    }
+  }
 
-    # subset rows in that pseudo panel (keeping original row order within dta)
-    sel <- dta_idx$id %in% ids_j
-    Xj <- X_mm[sel, , drop = FALSE]
-    yj <- y_vec[sel]
+  # Collect id/wID rows to rbind once (faster and avoids repeated rbind coercion)
+  xid_chunks <- vector("list", J0)
 
-    # weights: map each row to its unit id weight
+  for (j0 in seq_len(J0)) {
+    tr   <- as.character(treated_ids[j0])
+    ridx <- row_idx_list[[j0]]
+
+    # Subset X and y using integer rows
+    Xj <- X_mm[ridx, , drop = FALSE]
+    yj <- y_vec[ridx]
+
+    # weights for rows in this pseudo panel
+    # W[, j0] must be named by rownames(W) (unit ids)
     wcol <- W[, j0]
-    names(wcol) <- rownames(W)
-    wj <- wcol[dta_idx$id[sel]]
+    # map row ids -> weights
+    wj <- as.numeric(wcol[id_vec[ridx]])
 
-    # ensure treated unit gets weight 1 by convention
-    wj[dta_idx$id[sel] == tr] <- 1
+    # convention: treated unit weight = 1
+    wj[id_vec[ridx] == tr] <- 1
 
+    # store
     X_list[[j0]] <- Xj
     y_list[[j0]] <- yj
-    w_list[[j0]] <- as.numeric(wj)
+    w_list[[j0]] <- wj
 
-    X_idlist <- rbind(X_idlist, dta_idx[sel])
+    # store id mapping rows
+    xid_chunks[[j0]] <- dta_idx[ridx, .(id, wID)]
   }
+
+  # One safe bind at end
+  X_idlist <- data.table::rbindlist(xid_chunks, use.names = TRUE, fill = TRUE)
 
   # block objects
   X_block <- Matrix::bdiag(X_list)

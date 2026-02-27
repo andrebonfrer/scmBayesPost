@@ -128,7 +128,7 @@ build_W_from_augMultiSynth <- function(fit, id_universe, self_weight = 1) {
     if (anyNA(ridx)) {
       miss <- donors[is.na(ridx)]
       stop(sprintf("Some donor_ids not found in id_universe. Example: %s",
-                   paste(head(miss, 5), collapse = ", ")))
+                   paste(utils::head(miss, 5), collapse = ", ")))
     }
     W[ridx, j0] <- wj
 
@@ -142,8 +142,8 @@ build_W_from_augMultiSynth <- function(fit, id_universe, self_weight = 1) {
 
 #' Coerce augsynth::multisynth object into canonical weights matrix
 #'
-#' multisynth documents that each column corresponds to a treated unit. :contentReference[oaicite:2]{index=2}
-#' In implementation, rownames are set to unit IDs. :contentReference[oaicite:3]{index=3}
+#' multisynth documents that each column corresponds to a treated unit.
+#' In implementation, rownames are set to unit IDs.
 #'
 #' @param msynth multisynth object.
 #' @return Canonical weights matrix.

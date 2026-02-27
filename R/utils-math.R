@@ -12,6 +12,8 @@
 #' @param max_tries Integer; number of jitter escalations.
 #'
 #' @return If n=1, a numeric vector. If n>1, a matrix with n rows.
+#' @importFrom Matrix Matrix chol
+
 #' @export
 rMVNormCovariance <- function(n = 1L, mu, Sigma, jitter = 1e-8, max_tries = 6L) {
   n <- as.integer(n)
@@ -139,7 +141,7 @@ replace_kth_column_block_diagonal <- function(X_block, new_col, K, k) {
   nb <- n %/% J0
 
   # Convert to a mutable sparse triplet
-  Xs <- Matrix::as(X_block, "dgCMatrix")
+  Xs <- methods::as(X_block, "dgCMatrix")
 
   # For each block, replace entries in that column for that block's row range
   for (j in seq_len(J0)) {

@@ -25,10 +25,25 @@ treated_ids_from_panel <- function(dta, id_col, tr_col,
                                    treat_type = c("binary", "continuous"),
                                    treat_threshold = 0) {
   treat_type <- match.arg(treat_type)
+
+  id_col <- as.character(id_col)[1]
+  tr_col <- as.character(tr_col)[1]
+
+  if (!id_col %in% names(dta)) stop(sprintf("id_col '%s' not found.", id_col))
+  if (!tr_col %in% names(dta)) stop(sprintf("tr_col '%s' not found.", tr_col))
+
+  ids <- dta[[id_col]]
+  tr  <- dta[[tr_col]]
+
+  # max by id, NA-safe
+  max_tr <- tapply(tr, ids, function(v) {
+    if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE)
+  })
+
+  # filter treated
   if (treat_type == "binary") {
-    tlist <- dta[, max(get(tr_col), na.rm = TRUE), by = ..id_col][V1 > 0, get(id_col)]
+    names(max_tr)[!is.na(max_tr) & max_tr > 0]
   } else {
-    tlist <- dta[, max(get(tr_col), na.rm = TRUE), by = ..id_col][V1 > treat_threshold, get(id_col)]
+    names(max_tr)[!is.na(max_tr) & max_tr > treat_threshold]
   }
-  as.vector(tlist)
 }
