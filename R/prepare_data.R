@@ -246,14 +246,12 @@ prepare_data_general <- function(dta,
     # treated-unit level slice
     last_t <- max(dta[[time_col]], na.rm = TRUE)
 
-    Zdt <- dta[
-      get(time_col) == last_t & as.character(get(id_col)) %in% treated_ids
-    ]
+    Zdt <- dta[get(time_col) == last_t & as.character(get(id_col)) %in% treated_ids]
 
-    # keep only one row per treated id if needed
-    Zdt <- Zdt[, .SD[1], by = id]
+    # keep one row per treated unit
+    Zdt <- Zdt[!duplicated(as.character(Zdt[[id_col]]))]
 
-    # force exact treated-unit order to match W columns / beta blocks
+    # force exact treated-unit order
     Zdt <- Zdt[match(treated_ids, as.character(Zdt[[id_col]]))]
 
     # build moderator matrix from RHS only
