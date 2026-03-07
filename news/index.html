@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.0</span>
       </span>
     </div>
 
@@ -42,8 +42,17 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.0.1" id="scmbayespost-001">scmBayesPost 0.0.1<a class="anchor" aria-label="anchor" href="#scmbayespost-001"></a></h2>
-<ul><li>Initial CRAN submission.</li>
+<h2 class="page-header" data-toc-text="0.2.0" id="scmbayespost-020">scmBayesPost 0.2.0<a class="anchor" aria-label="anchor" href="#scmbayespost-020"></a></h2>
+<p>Major internal refactor.</p>
+<ul><li>
+<p>Replaced legacy <code>gibbs_sampling()</code> with modular samplers</p>
+<ul><li><code><a href="../reference/gibbs_sampling_simple.html">gibbs_sampling_simple()</a></code></li>
+<li><code><a href="../reference/gibbs_sampling_moderators.html">gibbs_sampling_moderators()</a></code></li>
+</ul></li>
+<li><p>Generalized <code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> to support moderators and future multi-outcome models.</p></li>
+<li><p>Clean separation between observation model (<code>f.X</code>) and heterogeneity model (<code>f.Z</code>).</p></li>
+<li><p>Simplified Gibbs dispatch logic in <code><a href="../reference/gibbs_postscm.html">gibbs_postscm()</a></code>.</p></li>
+<li><p>sim_example.R in scripts/ replaced to run a model with second stage included</p></li>
 </ul></div>
   </div>
 
