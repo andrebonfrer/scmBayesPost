@@ -1,387 +1,310 @@
-#' Gibbs sampling dispatcher for post-SCM models
+#' Gibbs sampler dispatcher for post-SCM models
 #'
-#' Runs an appropriate Gibbs sampler depending on the complexity level encoded in gdata$cov.
+#' Dispatches to the appropriate internal Gibbs sampler depending on whether
+#' the prepared data object includes moderators and whether the model is
+#' single- or multi-outcome.
 #'
-#' @param gdata Output from prepare_data_general().
-#' @param n_iter Number of iterations.
-#' @param burn_in Burn-in iterations.
-#' @param run_selection_gibbs Logical; run selection equation Gibbs block (only relevant for full sampler).
-#' @param do.CF Use control function when IV blocks exist.
-#' @param selection.method Character; "2SRI" or "GR" (only relevant if run_selection_gibbs=TRUE).
-#' @param Z_cov_dense Dense covariance for IV first stage (requires MCMCpack if TRUE).
-#' @param CF.interactions Expand CF residual interactions.
+#' @param gdata Output from [prepare_data_general()].
+#' @param n_iter Integer. Total number of Gibbs iterations.
+#' @param burn_in Integer. Number of initial iterations discarded.
 #'
-#' @return Posterior draws.
+#' @return A list of posterior draws.
 #' @export
 gibbs_postscm <- function(gdata,
                           n_iter = 1000,
-                          burn_in = 500,
-                          run_selection_gibbs = FALSE,
-                          do.CF = TRUE,
-                          selection.method = c("2SRI","GR"),
-                          Z_cov_dense = FALSE,
-                          CF.interactions = TRUE) {
+                          burn_in = 500) {
 
-  selection.method <- match.arg(selection.method)
+  if (is.null(gdata$cov))
+    stop("gdata$cov missing")
 
-  lvl <- gdata$cov$second_stage
+  has_Z <- !is.null(gdata$Z_block)
 
-  if (is.null(lvl) || lvl == "none") {
-    # Minimal branch ignores selection/IV blocks by design
-    y <- gdata$Y_block
-    X <- gdata$X_block
-    W <- gdata$W
+  # number of outcomes
+  M <- if (!is.null(gdata$cov$M)) gdata$cov$M else 1
 
-    XtW <- Matrix::t(X) %*% W
-    XtWX <- XtW %*% X
-    XtWy <- XtW %*% y
+  # ---------- single outcome ----------
 
-    p <- ncol(X)
-    beta <- matrix(0, p, 1)
-    sigma2 <- 1
-
-    beta_samples <- matrix(0, n_iter - burn_in, p)
-    sigma2_samples <- numeric(n_iter - burn_in)
-
-    pb <- utils::txtProgressBar(min = 0, max = n_iter, style = 3)
-    for (iter in 1:n_iter) {
-      A <- XtWX / sigma2 + diag(1e-8, p)
-      b <- XtWy / sigma2
-      cA <- Matrix::chol(A)
-      Ainv <- Matrix::chol2inv(cA)
-      mu <- Ainv %*% b
-      beta <- rMVNormCovariance(1, mu = mu, Sigma = Ainv)
-
-      resid <- y - X %*% beta
-      alpha <- 2 + length(y) / 2
-      rate <- 2 + as.numeric(Matrix::t(resid) %*% W %*% resid) / 2
-      sigma2 <- 1 / stats::rgamma(1, shape = alpha, rate = rate)
-
-      if (iter > burn_in) {
-        beta_samples[iter - burn_in, ] <- as.numeric(beta)
-        sigma2_samples[iter - burn_in] <- sigma2
-      }
-      utils::setTxtProgressBar(pb, iter)
-    }
-    return(list(beta_samples = beta_samples, sigma2_samples = sigma2_samples))
+  if (M == 1 && !has_Z) {
+    return(
+      gibbs_sampling_simple(
+        gdata = gdata,
+        n_iter = n_iter,
+        burn_in = burn_in
+      )
+    )
   }
 
-  # Full branch
-  gibbs_sampling(
-    gdata = gdata,
-    n_iter = n_iter,
-    burn_in = burn_in,
-    run_selection_gibbs = run_selection_gibbs,
-    do.CF = do.CF,
-    selection.method = selection.method,
-    Z_cov_dense = Z_cov_dense,
-    CF.interactions = CF.interactions
-  )
+  if (M == 1 && has_Z) {
+    return(
+      gibbs_sampling_moderators(
+        gdata = gdata,
+        n_iter = n_iter,
+        burn_in = burn_in
+      )
+    )
+  }
+
+  # ---------- multi outcome ----------
+
+  if (M > 1 && !has_Z) {
+    stop(
+      "Multi-outcome model without moderators not implemented yet."
+    )
+  }
+
+  if (M > 1 && has_Z) {
+    stop(
+      "Multi-outcome moderator model not implemented yet."
+    )
+  }
+
 }
 
-
-#' Gibbs sampler for post–synthetic-control hierarchical models (internal)
+#' Gibbs sampler for post-SCM model without moderators
 #'
-#' Runs the full Gibbs sampler for the second-stage Bayesian model used by
-#' `scmBayesPost` when moderator and/or endogeneity components are present.
-#' This function is **internal** and is called by [gibbs_postscm()].
-#'
-#' The sampler targets a hierarchical regression of treated-unit (or unit–event)
-#' treatment-effect parameters on moderator covariates, with optional
-#' endogeneity correction via (i) a selection-equation Gibbs block for binary
-#' treatment assignment, and/or (ii) instrumental-variables/control-function
-#' blocks for endogenous moderators.
-#'
-#' @param gdata A data object produced by [prepare_data_general()]. Must contain
-#'   at least `Y_block`, `X_block`, and `W`. For second-stage models it must also
-#'   contain `Z_block` and, if IV functionality is used, `Z.instruments`.
-#' @param n_iter Integer; total number of Gibbs iterations.
-#' @param burn_in Integer; number of initial iterations discarded as burn-in.
-#' @param run_selection_gibbs Logical; if `TRUE`, include a Gibbs block for a
-#'   binary treatment/selection equation and update the relevant column of
-#'   `X_block` with the resulting residual (2SRI) or generalized residual (GR).
-#'   Requires `gdata$first_stage` components (e.g., `GRX`, `GRY`) and a column in
-#'   `X_block` corresponding to the residual (typically `"GR"`).
-#' @param do.CF Logical; if `TRUE`, apply a control-function approach when
-#'   `gdata$Z.instruments` is provided (append first-stage residuals, optionally
-#'   interacted). If `FALSE`, use a 2SLS-style replacement with first-stage
-#'   predicted values. Ignored when no instruments are provided.
-#' @param selection.method Character; residual type used in the selection block:
-#'   `"2SRI"` uses probit residual inclusion; `"GR"` uses generalized residuals.
-#' @param Z_cov_dense Logical; if `TRUE`, estimate a dense covariance matrix for
-#'   the first-stage IV residuals (requires `MCMCpack` for inverse-Wishart draws);
-#'   if `FALSE`, assumes a diagonal covariance.
-#' @param CF.interactions Logical; if `TRUE` and `do.CF = TRUE`, include
-#'   interaction terms among control-function residuals.
-#'
-#' @return A list of posterior draws. Components include (depending on model):
-#'   \describe{
-#'     \item{beta_samples}{Matrix of draws for stacked second-stage coefficients.}
-#'     \item{gamma_samples}{Matrix of draws for moderator effects.}
-#'     \item{sigma2_samples}{Vector of draws for outcome noise variance.}
-#'     \item{tau_samples}{Matrix of draws for hierarchical scale parameters.}
-#'     \item{beta_fs_samples}{(Optional) draws for selection-equation coefficients.}
-#'     \item{sigma2_fs_samples}{(Optional) draws for selection-equation variance.}
-#'     \item{beta.Z_samples}{(Optional) list of draws for IV first-stage coefficients.}
-#'     \item{sigma.Z_samples}{(Optional) draws for IV covariance (diagonal or dense).}
-#'   }
-#'
-#' @seealso [gibbs_postscm()], [prepare_data_general()]
+#' Internal sampler used when no second-stage moderators (f.Z),
+#' no instruments, and no selection equations are present.
 #'
 #' @keywords internal
-gibbs_sampling <- function(gdata,
-                                n_iter = 1000,
-                                burn_in = 500,
-                                run_selection_gibbs = FALSE,
-                                do.CF = TRUE,
-                                selection.method = c("2SRI","GR"),
-                                Z_cov_dense = FALSE,
-                                CF.interactions = TRUE) {
-
-  selection.method <- match.arg(selection.method)
+gibbs_sampling_simple <- function(gdata,
+                                  n_iter = 1000,
+                                  burn_in = 500) {
 
   y_block <- gdata$Y_block
   X_block <- gdata$X_block
-  Zbase   <- gdata$Z_block
   W_block <- gdata$W
-  Zim     <- gdata$Z.instruments
 
-  if (!do.CF) Z_cov_dense <- FALSE
-
-  # selection equation support
-  if (run_selection_gibbs) {
-    if (is.null(gdata$dtaidx) || is.null(gdata$GRX) || is.null(gdata$GRY) || is.null(gdata$X_idlist)) {
-      stop("run_selection_gibbs=TRUE requires gdata$dtaidx, GRX, GRY, and X_idlist.")
-    }
-    .dtaidx <- data.table::copy(gdata$dtaidx)
-    GRX <- gdata$GRX
-  }
+  if (is.null(gdata$cov$intX))
+    stop("gdata$cov$intX is NULL.")
 
   K  <- length(gdata$cov$Xcols)
   J0 <- gdata$cov$J0
-  G  <- ncol(Zbase)
-
-  # moderator endogeneity bookkeeping
-  if (!is.null(Zim)) {
-    LZ <- L <- length(Zim$dv)
-    if (do.CF) {
-      if (CF.interactions) L <- (2^LZ - 1)
-      G <- G + L
-    }
-  }
 
   # priors
-  Sigma_gamma_prior <- 10
-  mu_gamma_prior <- matrix(rep(0, G), nrow = G)
-
   a_sigma_alpha_prior <- 2
   b_sigma_alpha_prior <- 2
+
   a_sigma_tau_prior <- 2
   b_sigma_tau_prior <- 2
 
-  # init
-  beta   <- matrix(0, K * J0, 1)
-  gamma  <- rep(0, G)
+  # initial values
+  beta <- matrix(0, K * J0, 1)
   sigma2 <- 1
-  tau    <- rep(1, K)
-
-  if (run_selection_gibbs) {
-    beta_fs <- matrix(0, ncol(GRX), 1)
-    sigma2_fs <- 1
-  }
-
-  if (!is.null(Zim)) {
-    if (Z_cov_dense) {
-      sigma.Z <- initialize_dense_covariance(LZ)
-    } else {
-      sigma.Z <- diag(rep(1, LZ))
-    }
-  }
+  tau <- rep(1, K)
 
   # precompute
   XtW  <- Matrix::t(X_block) %*% W_block
   XtWX <- XtW %*% X_block
   XtWy <- XtW %*% y_block
 
-  n_keep <- n_iter - burn_in
-  beta_samples  <- matrix(0, n_keep, K * J0)
-  gamma_samples <- matrix(0, n_keep, G)
-  sigma2_samples <- numeric(n_keep)
-  tau_samples <- matrix(0, n_keep, K)
-
-  if (run_selection_gibbs) {
-    beta_fs_samples <- matrix(0, n_keep, ncol(GRX))
-    sigma2_fs_samples <- numeric(n_keep)
-  }
-
-  if (!is.null(Zim)) {
-    beta.Z_samples <- vector("list", LZ)
-    for (l in 1:LZ) beta.Z_samples[[l]] <- matrix(0, n_keep, ncol(Zim$Z.im[[l]]))
-    if (Z_cov_dense) sigma.Z_samples <- array(0, dim = c(LZ, LZ, n_keep))
-    else sigma.Z_samples <- matrix(0, n_keep, LZ)
-  }
+  # storage
+  n_save <- n_iter - burn_in
+  beta_samples <- matrix(0, n_save, K * J0)
+  sigma2_samples <- numeric(n_save)
+  tau_samples <- matrix(0, n_save, K)
 
   pb <- utils::txtProgressBar(min = 0, max = n_iter, style = 3)
 
   for (iter in seq_len(n_iter)) {
 
-    ## 1) selection equation block (optional)
-    if (run_selection_gibbs) {
+    # ---- beta update
+    Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
 
-      .bd <- gibbs_binomial_probit(
-        X = GRX, y = gdata$GRY,
-        beta = beta_fs,
-        Sigma_prior = 0.2 * diag(ncol(GRX)),
-        mu_prior = rep(0, ncol(GRX)),
-        sigma2 = sigma2_fs,
-        alpha_0 = 4,
-        beta_0 = 4
+    A <- XtWX / sigma2 + Sigma_beta_prior_inv
+    b <- XtWy / sigma2
+
+    cA <- Matrix::chol(A)
+    A_inv <- Matrix::chol2inv(cA)
+
+    mu_beta <- A_inv %*% b
+
+    beta <- rMVNormCovariance(
+      1,
+      mu = as.numeric(mu_beta),
+      Sigma = A_inv
+    )
+
+    # ---- sigma2 update
+    residuals <- y_block - X_block %*% beta
+
+    alpha <- a_sigma_alpha_prior + length(y_block) / 2
+    beta_param <- b_sigma_alpha_prior +
+      as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
+
+    sigma2 <- 1 / stats::rgamma(
+      1,
+      shape = alpha,
+      rate = beta_param
+    )
+
+    # ---- tau update
+    beta_matrix <- matrix(beta, ncol = K, byrow = TRUE)
+
+    for (k in seq_len(K)) {
+
+      tau[k] <- sqrt(
+        1 / stats::rgamma(
+          1,
+          shape = a_sigma_tau_prior + (J0 / 2),
+          rate =
+            b_sigma_tau_prior +
+            sum(beta_matrix[, k]^2) / 2
+        )
       )
 
-      beta_fs <- matrix(.bd$beta, ncol = 1)
-      sigma2_fs <- .bd$sigma2
-
-      resid <- gdata$GRY - stats::pnorm(GRX %*% beta_fs)
-      PR <- stats::pnorm(GRX %*% beta_fs)
-      GR <- gdata$GRY * stats::dnorm(PR) / stats::pnorm(PR) -
-        (1 - gdata$GRY) * stats::dnorm(-PR) / stats::pnorm(-PR)
-      .r <- if (selection.method == "GR") GR else resid
-
-      .dtaidx[, fs_resid := as.numeric(.r)]
-      .dtaX <- gdata$X_idlist
-      data.table::setkey(.dtaidx, id, wID)
-      data.table::setkey(.dtaX,   id, wID)
-
-      CR <- .dtaX[.dtaidx][["fs_resid"]]
-
-      X_block <- replace_kth_column_block_diagonal(X_block, new_col = CR, K = K,
-                                                   k = which(gdata$cov$Xcols=="GR"))
-
-      XtW  <- Matrix::t(X_block) %*% W_block
-      XtWX <- XtW %*% X_block
-      XtWy <- XtW %*% y_block
     }
 
-    ## 2) endogenous moderators first stage (optional)
-    if (!is.null(Zim)) {
-      Ylist <- Qzlist <- vector("list", LZ)
-      for (l in 1:LZ) {
-        Ylist[[l]] <- Zbase[, Zim$dv[l]]
-        Qzlist[[l]] <- Zim$Z.im[[l]]
-      }
+    # ---- store draws
+    if (iter > burn_in) {
 
-      gibbsZ <- gibbs_sampler_one_draw_cov(
-        y_list = Ylist,
-        X_list = Qzlist,
-        sigma_param = sigma.Z,
-        covariance_type = if (Z_cov_dense) "dense" else "diagonal"
-      )
+      s <- iter - burn_in
 
-      sigma.Z <- gibbsZ$sigma2_samples
-      beta.Z  <- gibbsZ$beta_samples
+      beta_samples[s, ] <- as.numeric(beta)
+      sigma2_samples[s] <- sigma2
+      tau_samples[s, ] <- tau
 
-      if (do.CF) {
-        .lmat <- as.data.frame(gibbsZ$residuals)
-        colnames(.lmat) <- paste0("lres", seq_len(LZ))
-        if (CF.interactions) {
-          .lmat <- stats::model.matrix(stats::formula(paste("~ 0 + .^", LZ)), data = .lmat)
-        }
-        Z <- Matrix::as.matrix(cbind(Zbase, .lmat))
-      } else {
-        .pmat <- as.matrix(gibbsZ$predicted)
-        Z <- Zbase
-        for (l in 1:LZ) {
-          cl <- match(Zim$dv[l], colnames(Z))
-          Z[, cl] <- .pmat[, l]
-          colnames(Z)[cl] <- paste0("pred.", Zim$dv[l])
-        }
-      }
-    } else {
-      Z <- Zbase
     }
 
-    ## 3) Z_star for treatment coefficient moderation
+    utils::setTxtProgressBar(pb, iter)
+  }
+
+  colnames(tau_samples) <- gdata$cov$Xcols
+
+  list(
+    beta_samples = beta_samples,
+    sigma2_samples = sigma2_samples,
+    tau_samples = tau_samples
+  )
+}
+
+
+#' Gibbs sampler for single-outcome post-SCM model with moderators
+#'
+#' Internal sampler for the generalized scmBayesPost object when a second-stage
+#' moderator equation is present, but no IV and no selection equation are used.
+#'
+#' @keywords internal
+gibbs_sampling_moderators <- function(gdata,
+                                      n_iter = 1000,
+                                      burn_in = 500) {
+
+  y_block <- gdata$Y_block
+  X_block <- gdata$X_block
+  W_block <- gdata$W
+  Z <- gdata$Z_block
+
+  if (is.null(Z)) stop("gdata$Z_block is NULL.")
+  if (is.null(gdata$cov$intX)) stop("gdata$cov$intX is NULL.")
+
+  K <- length(gdata$cov$Xcols)
+  J0 <- gdata$cov$J0
+  G <- ncol(Z)
+  k_tr <- gdata$cov$intX
+
+  # priors
+  Sigma_gamma_prior <- 10
+  mu_gamma_prior <- rep(0, G)
+
+  a_sigma_alpha_prior <- 2
+  b_sigma_alpha_prior <- 2
+
+  a_sigma_tau_prior <- 2
+  b_sigma_tau_prior <- 2
+
+  # initial values
+  beta <- matrix(0, K * J0, 1)
+  gamma <- rep(0, G)
+  sigma2 <- 1
+  tau <- rep(1, K)
+
+  # precompute
+  XtW <- Matrix::t(X_block) %*% W_block
+  XtWX <- XtW %*% X_block
+  XtWy <- XtW %*% y_block
+
+  # storage
+  n_save <- n_iter - burn_in
+  beta_samples <- matrix(0, n_save, K * J0)
+  gamma_samples <- matrix(0, n_save, G)
+  sigma2_samples <- numeric(n_save)
+  tau_samples <- matrix(0, n_save, K)
+
+  pb <- utils::txtProgressBar(min = 0, max = n_iter, style = 3)
+
+  for (iter in seq_len(n_iter)) {
+
+    # ---- beta update
     dZ <- rep(0, K)
-    dZ[gdata$cov$intX] <- 1
+    dZ[k_tr] <- 1
     Z_star <- Matrix::kronecker(Z, dZ)
 
-    ## 4) sample beta
     Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
     q <- Z_star %*% gamma
+
     A <- XtWX / sigma2 + Sigma_beta_prior_inv
     b <- XtWy / sigma2 + Sigma_beta_prior_inv %*% q
 
     cA <- Matrix::chol(A)
     A_inv <- Matrix::chol2inv(cA)
     mu_beta <- A_inv %*% b
-    beta <- rMVNormCovariance(1, mu = mu_beta, Sigma = A_inv)
 
+    beta <- rMVNormCovariance(1, mu = as.numeric(mu_beta), Sigma = A_inv)
+
+    # ---- gamma update
     beta_matrix <- matrix(beta, ncol = K, byrow = TRUE)
+    beta_tr <- as.numeric(beta_matrix[, k_tr, drop = TRUE])
 
-    ## 5) sample gamma
-    Sigma_gamma_prior_inv <- (1 / Sigma_gamma_prior) * diag(G)
-    beta_tr <- beta_matrix[, gdata$cov$intX]
-    V_gamma <- Matrix::solve(t(Z) %*% Z / tau[2]^2 + Sigma_gamma_prior_inv)
-    m_gamma <- V_gamma %*% (t(Z) %*% beta_tr / tau[2]^2 + Sigma_gamma_prior_inv %*% mu_gamma_prior)
-    gamma <- rMVNormCovariance(1, mu = m_gamma, Sigma = V_gamma)
+    Sigma_gamma_prior_inv <- diag(1 / Sigma_gamma_prior, G)
 
-    ## 6) sample sigma2
-    resid_y <- y_block - X_block %*% beta
+    V_gamma <- solve(crossprod(Z) / tau[k_tr]^2 + Sigma_gamma_prior_inv)
+    rhs <- as.numeric(crossprod(Z, beta_tr)) / tau[k_tr]^2 +
+      as.numeric(Sigma_gamma_prior_inv %*% mu_gamma_prior)
+    m_gamma <- V_gamma %*% rhs
+
+    gamma <- rMVNormCovariance(1, mu = as.numeric(m_gamma), Sigma = V_gamma)
+
+    # ---- sigma2 update
+    residuals <- y_block - X_block %*% beta
     alpha <- a_sigma_alpha_prior + length(y_block) / 2
-    rate  <- b_sigma_alpha_prior + as.numeric(Matrix::t(resid_y) %*% W_block %*% resid_y) / 2
-    sigma2 <- 1 / stats::rgamma(1, shape = alpha, rate = rate)
+    beta_param <- b_sigma_alpha_prior +
+      as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
+    sigma2 <- 1 / stats::rgamma(1, shape = alpha, rate = beta_param)
 
-    ## 7) sample tau
+    # ---- tau update
     for (k in seq_len(K)) {
-      mu_k <- Z_star[((seq_len(J0) - 1) * K + k), , drop = FALSE] %*% gamma
-      tau[k] <- sqrt(1 / stats::rgamma(
-        1,
-        shape = a_sigma_tau_prior + (J0 / 2),
-        rate  = b_sigma_tau_prior + (sum((beta_matrix[, k] - mu_k)^2) / 2)
-      ))
+      tau[k] <- sqrt(
+        1 / stats::rgamma(
+          1,
+          shape = a_sigma_tau_prior + (J0 / 2),
+          rate = b_sigma_tau_prior +
+            sum((beta_matrix[, k] -
+                   Z_star[((1:J0) - 1) * K + k, , drop = FALSE] %*% gamma)^2) / 2
+        )
+      )
     }
 
-    ## store
+    # ---- store
     if (iter > burn_in) {
       s <- iter - burn_in
       beta_samples[s, ] <- as.numeric(beta)
       gamma_samples[s, ] <- as.numeric(gamma)
-      sigma2_samples[s]  <- sigma2
-      tau_samples[s, ]   <- tau
-
-      if (run_selection_gibbs) {
-        beta_fs_samples[s, ] <- as.numeric(beta_fs)
-        sigma2_fs_samples[s] <- sigma2_fs
-      }
-
-      if (!is.null(Zim)) {
-        for (l in seq_len(LZ)) beta.Z_samples[[l]][s, ] <- as.numeric(beta.Z[[l]])
-        if (Z_cov_dense) sigma.Z_samples[, , s] <- sigma.Z
-        else sigma.Z_samples[s, ] <- diag(sigma.Z)
-      }
+      sigma2_samples[s] <- sigma2
+      tau_samples[s, ] <- tau
     }
 
     utils::setTxtProgressBar(pb, iter)
   }
 
-  out <- list(
-    beta_samples  = beta_samples,
+  colnames(gamma_samples) <- colnames(Z)
+  colnames(tau_samples) <- gdata$cov$Xcols
+
+  list(
+    beta_samples = beta_samples,
     gamma_samples = gamma_samples,
     sigma2_samples = sigma2_samples,
-    tau_samples   = tau_samples
+    tau_samples = tau_samples
   )
-  if (run_selection_gibbs) {
-    out$beta_fs_samples <- beta_fs_samples
-    out$sigma2_fs_samples <- sigma2_fs_samples
-  }
-  if (!is.null(Zim)) {
-    out$beta.Z_samples <- beta.Z_samples
-    out$sigma.Z_samples <- sigma.Z_samples
-  }
-  out
 }
-
-
 
 
 #' Gibbs Sampling for a Binomial Probit Model with sigma^2

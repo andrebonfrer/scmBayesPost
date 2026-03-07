@@ -2,39 +2,22 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_postscm}
 \alias{gibbs_postscm}
-\title{Gibbs sampling dispatcher for post-SCM models}
+\title{Gibbs sampler dispatcher for post-SCM models}
 \usage{
-gibbs_postscm(
-  gdata,
-  n_iter = 1000,
-  burn_in = 500,
-  run_selection_gibbs = FALSE,
-  do.CF = TRUE,
-  selection.method = c("2SRI", "GR"),
-  Z_cov_dense = FALSE,
-  CF.interactions = TRUE
-)
+gibbs_postscm(gdata, n_iter = 1000, burn_in = 500)
 }
 \arguments{
-\item{gdata}{Output from prepare_data_general().}
+\item{gdata}{Output from \code{\link[=prepare_data_general]{prepare_data_general()}}.}
 
-\item{n_iter}{Number of iterations.}
+\item{n_iter}{Integer. Total number of Gibbs iterations.}
 
-\item{burn_in}{Burn-in iterations.}
-
-\item{run_selection_gibbs}{Logical; run selection equation Gibbs block (only relevant for full sampler).}
-
-\item{do.CF}{Use control function when IV blocks exist.}
-
-\item{selection.method}{Character; "2SRI" or "GR" (only relevant if run_selection_gibbs=TRUE).}
-
-\item{Z_cov_dense}{Dense covariance for IV first stage (requires MCMCpack if TRUE).}
-
-\item{CF.interactions}{Expand CF residual interactions.}
+\item{burn_in}{Integer. Number of initial iterations discarded.}
 }
 \value{
-Posterior draws.
+A list of posterior draws.
 }
 \description{
-Runs an appropriate Gibbs sampler depending on the complexity level encoded in gdata$cov.
+Dispatches to the appropriate internal Gibbs sampler depending on whether
+the prepared data object includes moderators and whether the model is
+single- or multi-outcome.
 }

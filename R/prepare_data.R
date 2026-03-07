@@ -80,6 +80,16 @@ prepare_data_general <- function(dta,
   fX_blocks <- parse_complex_formula(f.X)
   X_mm <- stats::model.matrix(fX_blocks[[1]], data = dta)
 
+  # index of treatment regressor inside X
+  intX <- match(tr_col, colnames(X_mm))
+
+  if (is.na(intX)) {
+    stop(sprintf(
+      "Treatment column '%s' not found in X design matrix. X columns are: %s",
+      tr_col, paste(colnames(X_mm), collapse = ", ")
+    ))
+  }
+
   # outcome vector
   y_vec <- dta[[y_name]]
 
@@ -210,9 +220,13 @@ prepare_data_general <- function(dta,
   # ---- second-stage moderators
   Z_block <- NULL
   Z_instruments <- NULL
+
   cov_meta <- list(
     Xcols = colnames(X_mm),
-    J0 = J0, J = J, T = Tn,
+    intX = intX,
+    J0 = J0,
+    J = J,
+    T = Tn,
     treated_ids = treated_ids,
     id_universe = id_universe,
     second_stage = second_stage,
@@ -221,6 +235,7 @@ prepare_data_general <- function(dta,
     tr_col = tr_col
   )
 
+
   if (second_stage != "none") {
     if (is.null(f.Z)) stop("second_stage requires f.Z.")
 
@@ -228,10 +243,26 @@ prepare_data_general <- function(dta,
 
     # treated-unit level slice: take last time period for each treated id
     # (you can replace with your own aggregator)
+    # treated-unit level slice
     last_t <- max(dta[[time_col]], na.rm = TRUE)
-    Zdt <- dta[get(time_col) == last_t & as.character(get(id_col)) %in% treated_ids]
 
-    Z_block <- stats::model.matrix(fZ_blocks[[1]], data = Zdt)
+    Zdt <- dta[
+      get(time_col) == last_t & as.character(get(id_col)) %in% treated_ids
+    ]
+
+    # keep only one row per treated id if needed
+    Zdt <- Zdt[, .SD[1], by = id]
+
+    # force exact treated-unit order to match W columns / beta blocks
+    Zdt <- Zdt[match(treated_ids, as.character(Zdt[[id_col]]))]
+
+    # build moderator matrix from RHS only
+    fZ_blocks <- parse_complex_formula(f.Z)
+    tt_Z <- stats::terms(fZ_blocks[[1]])
+    tt_Z_rhs <- stats::delete.response(tt_Z)
+
+    Z_block <- stats::model.matrix(tt_Z_rhs, data = Zdt)
+
 
     if (second_stage == "moderators_iv") {
       if (length(fZ_blocks) < 2) {
