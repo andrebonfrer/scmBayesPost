@@ -13,6 +13,7 @@
 ~%2FRPackages%2FscmBayesPost%2FR%2Futils-formula.R="7750FA02"
 ~%2FRPackages%2FscmBayesPost%2FR%2Futils-math.R="F20C97F0"
 ~%2FRPackages%2FscmBayesPost%2FR%2Futils-panel.R="2F475828"
+~%2FRPackages%2FscmBayesPost%2FR%2Futils-sampler-control.R="414B62EC"
 ~%2FRPackages%2FscmBayesPost%2FR%2Futils-weights.R="8C18020B"
 ~%2FRPackages%2FscmBayesPost%2FREADME.md="13835E98"
 ~%2FRPackages%2FscmBayesPost%2Fman%2Finitialize_dense_covariance.Rd="1D54920C"

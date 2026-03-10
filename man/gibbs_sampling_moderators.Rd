@@ -4,7 +4,7 @@
 \alias{gibbs_sampling_moderators}
 \title{Gibbs sampler for single-outcome post-SCM model with moderators}
 \usage{
-gibbs_sampling_moderators(gdata, n_iter = 1000, burn_in = 500)
+gibbs_sampling_moderators(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \description{
 Internal sampler for the generalized scmBayesPost object when a second-stage

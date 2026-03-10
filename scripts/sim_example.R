@@ -1,204 +1,157 @@
-library(augMultiSynth)
+# examples to run the model
+
 library(scmBayesPost)
+library(augMultiSynth)
+library(data.table)
 
-simulate_gamma_recovery_data <- function(
-    J0 = 100,          # treated units
-    Jc = 200,          # control/donor units
-    Tpre = 20,
-    Tpost = 10,
-    gamma_true = c(0.5, 1.0, -0.75),   # intercept, z1, z2
-    sigma_tau = 0.3,
-    sigma_y = 1,
-    seed = 123
-) {
-  set.seed(seed)
+rm(list=ls())
 
-  Ttot <- Tpre + Tpost
-  ids_t <- paste0("T", seq_len(J0))
-  ids_c <- paste0("C", seq_len(Jc))
-  ids <- c(ids_t, ids_c)
+res <- run_demo(N=1000, T=100, M=3, treated_eval=300, L=40, K=10,
+                max_donors=500, pooled_adjustment=TRUE, nu=1)
 
-  # unit-level moderators for treated units
-  Z_t <- data.frame(
-    id = ids_t,
-    z1 = rnorm(J0),
-    z2 = rnorm(J0)
-  )
+fit <- res$fit
+sim <- res$sim
+unit_ids <- res$unit_ids
 
-  # true heterogeneous treatment effects
-  tau_true <- gamma_true[1] +
-    gamma_true[2] * Z_t$z1 +
-    gamma_true[3] * Z_t$z2 +
-    rnorm(J0, sd = sigma_tau)
+m <- 1  # outcome index to analyze
 
-  # baseline intercepts for all units
-  alpha <- rnorm(J0 + Jc, mean = 0, sd = 1)
-  names(alpha) <- ids
+# Build long panel
+Ymat <- sim$Yobs[[m]]  # N x T
+N <- nrow(Ymat); TT <- ncol(Ymat)
 
-  # build panel
-  dt <- expand.grid(
-    id = ids,
-    wID = seq_len(Ttot)
-  )
-  dt <- data.table::as.data.table(dt)
+dt <- data.table(
+  id  = rep(unit_ids, times = TT),
+  wID = rep(seq_len(TT), each = N),
+  y   = as.numeric(Ymat)
+)
 
-  # treatment indicator
-  dt[, treated := as.integer(id %in% ids_t)]
-  dt[, tvg.dummy := as.integer(treated == 1 & wID > Tpre)]
+# Treatment column:
+# If you have binary in sim, use it. Commonly you'd construct it from treat_time.
+# Here: tvg.dummy = 1 if t >= treat_time for that unit, else 0
+tt <- sim$treat_time
+dt[, tvg.dummy := {
+  i <- match(id, unit_ids)
+  as.integer(is.finite(tt[i]) & wID >= tt[i])
+}]
 
-  # attach moderators to treated units only
-  dt <- merge(dt, Z_t, by = "id", all.x = TRUE)
-  dt[is.na(z1), `:=`(z1 = 0, z2 = 0)]   # controls can have zero/unused Z
+W <- build_W_from_augMultiSynth(fit, id_universe = unit_ids, self_weight = 1)
+# W now has rownames = unit_ids, colnames = treated_unit_ids
 
-  # generate outcome
-  dt[, tau_unit := 0]
-  dt[id %in% ids_t, tau_unit := tau_true[match(id[id %in% ids_t], ids_t)]]
+gdata <- prepare_data_general(
+  dta = dt,
+  W   = W,
+  y_name = "y",
+  f.X = y ~ 1 + tvg.dummy,     # minimal: intercept + treatment
+  # no f.Z
+  id_col = "id",
+  time_col = "wID",
+  tr_col = "tvg.dummy",
+  treat_type = "binary",
+  second_stage = "none",
+  first_stage = "none",
+  verbose = TRUE
+)
 
-  dt[, y := alpha[id] + tau_unit * tvg.dummy + rnorm(.N, sd = sigma_y)]
+gdata$Z_block <- matrix(1, nrow = gdata$cov$J0, ncol = 1)
+colnames(gdata$Z_block) <- "(Intercept)"
+gdata$Z.instruments <- NULL
 
-  list(
-    dt = dt,
-    treated_ids = ids_t,
-    donor_ids = ids_c,
-    tau_true = stats::setNames(tau_true, ids_t),
-    gamma_true = gamma_true
-  )
+# ensure cov fields exist
+gdata$cov$intX <- match("tvg.dummy", gdata$cov$Xcols)  # index of treatment coefficient in X
+if (is.na(gdata$cov$intX)) stop("tvg.dummy not found in Xcols")
+
+set.seed(1)
+post <- gibbs_postscm(
+  gdata,
+  n_iter = 200,
+  burn_in = 100
+)
+
+# run diagnostics and comparisons
+
+extract_unit_effect_draws <- function(post, gdata) {
+  stopifnot(!is.null(post$beta_samples))
+  B <- post$beta_samples
+
+  K  <- length(gdata$cov$Xcols)
+  J0 <- gdata$cov$J0
+  k_tr <- gdata$cov$intX
+
+  stopifnot(ncol(B) == K * J0)
+
+  # column indices for treatment coefficient in each treated-unit block
+  idx <- (0:(J0 - 1)) * K + k_tr
+
+  tau_draws <- B[, idx, drop = FALSE]   # draws x J0
+  colnames(tau_draws) <- as.character(gdata$tlist)  # if you stored treated ids here
+  tau_draws
 }
 
 
-build_test_weights <- function(dt, treated_ids) {
-  id_universe <- unique(as.character(dt$id))
-  donor_ids <- setdiff(id_universe, treated_ids)
+posterior_unit_summaries <- function(tau_draws, probs = c(0.025, 0.5, 0.975),
+                                     treated_ids = NULL) {
 
-  W <- matrix(
-    0,
-    nrow = length(id_universe),
-    ncol = length(treated_ids),
-    dimnames = list(id_universe, treated_ids)
-  )
+  stopifnot(is.matrix(tau_draws) || is.data.frame(tau_draws))
+  tau_draws <- as.matrix(tau_draws)
 
-  w_donor <- rep(1 / length(donor_ids), length(donor_ids))
+  J0 <- ncol(tau_draws)
+  if (J0 < 1) stop("tau_draws has 0 columns.")
 
-  for (j in seq_along(treated_ids)) {
-    W[donor_ids, j] <- w_donor
-    W[treated_ids[j], j] <- 1
+  # choose treated_ids in priority order
+  if (is.null(treated_ids)) treated_ids <- colnames(tau_draws)
+  if (is.null(treated_ids) || length(treated_ids) != J0) {
+    treated_ids <- paste0("tr", seq_len(J0))
   }
 
-  W
-}
-
-
-run_gamma_recovery_example <- function(
-    J0 = 100,
-    Jc = 200,
-    Tpre = 20,
-    Tpost = 10,
-    gamma_true = c(0.5, 1.0, -0.75),
-    n_iter = 2000,
-    burn_in = 1000,
-    seed = 123
-) {
-  sim <- simulate_gamma_recovery_data(
-    J0 = J0,
-    Jc = Jc,
-    Tpre = Tpre,
-    Tpost = Tpost,
-    gamma_true = gamma_true,
-    seed = seed
-  )
-
-  dt <- sim$dt
-  W <- build_test_weights(dt, sim$treated_ids)
-
-  gdata <- prepare_data_general(
-    dta = dt,
-    W = W,
-    y_name = "y",
-    f.X = y ~ 1 + tvg.dummy,
-    f.Z = ~ z1 + z2,
-    id_col = "id",
-    time_col = "wID",
-    tr_col = "tvg.dummy",
-    treat_type = "binary",
-    second_stage = "moderators",
-    first_stage = "none",
-    verbose = TRUE
-  )
-
-  post <- gibbs_postscm(
-    gdata = gdata,
-    n_iter = n_iter,
-    burn_in = burn_in
-  )
-
-  list(
-    sim = sim,
-    W = W,
-    gdata = gdata,
-    post = post
-  )
-}
-
-
-summarise_gamma_recovery <- function(post, gamma_true, probs = c(0.025, 0.975)) {
-  Gs <- post$gamma_samples
-  if (is.null(Gs)) stop("gamma_samples not found in posterior output.")
+  q <- t(apply(tau_draws, 2, stats::quantile, probs = probs, na.rm = TRUE))
 
   out <- data.frame(
-    term = colnames(Gs),
-    truth = gamma_true,
-    mean = colMeans(Gs),
-    median = apply(Gs, 2, stats::median),
-    lo = apply(Gs, 2, stats::quantile, probs = probs[1]),
-    hi = apply(Gs, 2, stats::quantile, probs = probs[2]),
-    row.names = NULL
+    treated_id = treated_ids,
+    mean = colMeans(tau_draws, na.rm = TRUE),
+    sd   = apply(tau_draws, 2, stats::sd, na.rm = TRUE),
+    q,
+    row.names = NULL,
+    check.names = FALSE
   )
-
-  out$covered <- out$truth >= out$lo & out$truth <= out$hi
-  out$bias <- out$mean - out$truth
   out
 }
 
 
 
-res <- run_gamma_recovery_example()
 
-gamma_summary <- summarise_gamma_recovery(
-  post = res$post,
-  gamma_true = c("(Intercept)" = 0.5, "z1" = 1.0, "z2" = -0.75)
-)
+compare_to_truth <- function(summ, res, m = 1) {
+  # treated IDs used in gdata
+  tr_ids <- summ$treated_id
 
-gamma_summary
+  # map treated IDs to sim indices
+  idx <- match(tr_ids, res$unit_ids)
+  if (anyNA(idx)) stop("Some treated_id not found in res$unit_ids. Check ID plumbing.")
 
+  tau_true <- res$sim$tau_unit[idx, m]
+  df <- summ
+  df$tau_true <- tau_true
+  df$error_mean <- df$mean - df$tau_true
+  df$abs_error_mean <- abs(df$error_mean)
 
-plot_gamma_recovery <- function(post, gamma_true) {
-  Gs <- post$gamma_samples
-  gs <- data.frame(
-    term = colnames(Gs),
-    mean = colMeans(Gs),
-    lo = apply(Gs, 2, stats::quantile, probs = 0.025),
-    hi = apply(Gs, 2, stats::quantile, probs = 0.975),
-    truth = gamma_true
-  )
-
-  y <- seq_len(nrow(gs))
-  op <- par(mar = c(5, 10, 4, 2) + 0.1)
-  on.exit(par(op), add = TRUE)
-
-  plot(gs$mean, y,
-       xlim = range(c(gs$lo, gs$hi, gs$truth)),
-       yaxt = "n",
-       ylab = "",
-       xlab = "Gamma",
-       pch = 16)
-  axis(2, at = y, labels = gs$term, las = 1)
-  segments(gs$lo, y, gs$hi, y)
-  points(gs$truth, y, pch = 4, cex = 1.3, lwd = 2)
-  abline(v = 0, lty = 2)
+  df
 }
 
+tau_draws <- extract_unit_effect_draws(post, gdata)
+colnames(tau_draws) <- colnames(W)   # or gdata$cov$treated_ids if you stored it
+summ <- posterior_unit_summaries(tau_draws, probs=c(0.025,0.5,0.975))
+head(summ)
 
-plot_gamma_recovery(
-  res$post,
-  gamma_true = c("(Intercept)" = 0.5, "z1" = 1.0, "z2" = -0.75)
-)
+cmp <- compare_to_truth(summ, res, m = 1)
+with(cmp, cor(tau_true, mean))
+with(cmp, sqrt(mean((mean - tau_true)^2)))
+head(cmp[order(cmp$abs_error_mean, decreasing = TRUE), ], 10)
+
+plot(cmp$tau_true, cmp$mean,
+     xlab = "True unit effect",
+     ylab = "Posterior mean unit effect")
+abline(0, 1)
+
+# columns named "2.5%" and "97.5%" if you used probs=c(0.025,0.5,0.975)
+low  <- cmp[["2.5%"]]
+high <- cmp[["97.5%"]]
+mean(low <= cmp$tau_true & cmp$tau_true <= high)

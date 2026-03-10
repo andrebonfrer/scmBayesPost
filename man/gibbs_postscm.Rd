@@ -4,7 +4,7 @@
 \alias{gibbs_postscm}
 \title{Gibbs sampler dispatcher for post-SCM models}
 \usage{
-gibbs_postscm(gdata, n_iter = 1000, burn_in = 500)
+gibbs_postscm(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \arguments{
 \item{gdata}{Output from \code{\link[=prepare_data_general]{prepare_data_general()}}.}
@@ -12,6 +12,20 @@ gibbs_postscm(gdata, n_iter = 1000, burn_in = 500)
 \item{n_iter}{Integer. Total number of Gibbs iterations.}
 
 \item{burn_in}{Integer. Number of initial iterations discarded.}
+
+\item{control}{Optional list of sampler control parameters and priors.
+Supported entries currently include:
+\describe{
+\item{\code{Sigma_gamma_prior}}{Prior variance for second-stage
+\eqn{\gamma} coefficients. Can be a scalar or a vector of length
+\code{ncol(Z_block)}.}
+\item{\code{mu_gamma_prior}}{Prior mean vector for \eqn{\gamma}.
+Defaults to zero.}
+\item{\code{a_sigma_alpha_prior}, \code{b_sigma_alpha_prior}}{
+Shape/rate hyperparameters for the observation-noise variance prior.}
+\item{\code{a_sigma_tau_prior}, \code{b_sigma_tau_prior}}{
+Shape/rate hyperparameters for the coefficient-dispersion prior.}
+}}
 }
 \value{
 A list of posterior draws.

@@ -7,20 +7,37 @@
 #' @param gdata Output from [prepare_data_general()].
 #' @param n_iter Integer. Total number of Gibbs iterations.
 #' @param burn_in Integer. Number of initial iterations discarded.
+#' @param control Optional list of sampler control parameters and priors.
+#'   Supported entries currently include:
+#'   \describe{
+#'     \item{\code{Sigma_gamma_prior}}{Prior variance for second-stage
+#'       \eqn{\gamma} coefficients. Can be a scalar or a vector of length
+#'       \code{ncol(Z_block)}.}
+#'     \item{\code{mu_gamma_prior}}{Prior mean vector for \eqn{\gamma}.
+#'       Defaults to zero.}
+#'     \item{\code{a_sigma_alpha_prior}, \code{b_sigma_alpha_prior}}{
+#'       Shape/rate hyperparameters for the observation-noise variance prior.}
+#'     \item{\code{a_sigma_tau_prior}, \code{b_sigma_tau_prior}}{
+#'       Shape/rate hyperparameters for the coefficient-dispersion prior.}
+#'   }
 #'
 #' @return A list of posterior draws.
 #' @export
 gibbs_postscm <- function(gdata,
                           n_iter = 1000,
-                          burn_in = 500) {
+                          burn_in = 500,
+                          control = NULL) {
 
   if (is.null(gdata$cov))
-    stop("gdata$cov missing")
+    stop("gdata$cov missing", call. = FALSE)
+
+  if (is.null(gdata$cov$intX))
+    stop("Treatment coefficient index (intX) not set in gdata.", call. = FALSE)
 
   has_Z <- !is.null(gdata$Z_block)
-
-  # number of outcomes
   M <- if (!is.null(gdata$cov$M)) gdata$cov$M else 1
+
+  ctrl <- resolve_sampler_control(control = control, has_Z = has_Z)
 
   # ---------- single outcome ----------
 
@@ -29,7 +46,8 @@ gibbs_postscm <- function(gdata,
       gibbs_sampling_simple(
         gdata = gdata,
         n_iter = n_iter,
-        burn_in = burn_in
+        burn_in = burn_in,
+        control = ctrl
       )
     )
   }
@@ -39,7 +57,8 @@ gibbs_postscm <- function(gdata,
       gibbs_sampling_moderators(
         gdata = gdata,
         n_iter = n_iter,
-        burn_in = burn_in
+        burn_in = burn_in,
+        control = ctrl
       )
     )
   }
@@ -47,18 +66,17 @@ gibbs_postscm <- function(gdata,
   # ---------- multi outcome ----------
 
   if (M > 1 && !has_Z) {
-    stop(
-      "Multi-outcome model without moderators not implemented yet."
-    )
+    stop("Multi-outcome model without moderators not implemented yet.", call. = FALSE)
   }
 
   if (M > 1 && has_Z) {
-    stop(
-      "Multi-outcome moderator model not implemented yet."
-    )
+    stop("Multi-outcome moderator model not implemented yet.", call. = FALSE)
   }
 
+  stop("Unhandled model configuration in gibbs_postscm().", call. = FALSE)
 }
+
+
 
 #' Gibbs sampler for post-SCM model without moderators
 #'
@@ -68,24 +86,27 @@ gibbs_postscm <- function(gdata,
 #' @keywords internal
 gibbs_sampling_simple <- function(gdata,
                                   n_iter = 1000,
-                                  burn_in = 500) {
+                                  burn_in = 500,
+                                  control = NULL) {
+
+  ctrl <- resolve_sampler_control(control, has_Z = FALSE)
 
   y_block <- gdata$Y_block
   X_block <- gdata$X_block
   W_block <- gdata$W
 
   if (is.null(gdata$cov$intX))
-    stop("gdata$cov$intX is NULL.")
+    stop("gdata$cov$intX is NULL.", call. = FALSE)
 
   K  <- length(gdata$cov$Xcols)
   J0 <- gdata$cov$J0
 
   # priors
-  a_sigma_alpha_prior <- 2
-  b_sigma_alpha_prior <- 2
+  a_sigma_alpha_prior <- ctrl$a_sigma_alpha_prior
+  b_sigma_alpha_prior <- ctrl$b_sigma_alpha_prior
 
-  a_sigma_tau_prior <- 2
-  b_sigma_tau_prior <- 2
+  a_sigma_tau_prior <- ctrl$a_sigma_tau_prior
+  b_sigma_tau_prior <- ctrl$b_sigma_tau_prior
 
   # initial values
   beta <- matrix(0, K * J0, 1)
@@ -141,28 +162,21 @@ gibbs_sampling_simple <- function(gdata,
     beta_matrix <- matrix(beta, ncol = K, byrow = TRUE)
 
     for (k in seq_len(K)) {
-
       tau[k] <- sqrt(
         1 / stats::rgamma(
           1,
           shape = a_sigma_tau_prior + (J0 / 2),
-          rate =
-            b_sigma_tau_prior +
-            sum(beta_matrix[, k]^2) / 2
+          rate = b_sigma_tau_prior + sum(beta_matrix[, k]^2) / 2
         )
       )
-
     }
 
     # ---- store draws
     if (iter > burn_in) {
-
       s <- iter - burn_in
-
       beta_samples[s, ] <- as.numeric(beta)
       sigma2_samples[s] <- sigma2
       tau_samples[s, ] <- tau
-
     }
 
     utils::setTxtProgressBar(pb, iter)
@@ -186,15 +200,18 @@ gibbs_sampling_simple <- function(gdata,
 #' @keywords internal
 gibbs_sampling_moderators <- function(gdata,
                                       n_iter = 1000,
-                                      burn_in = 500) {
+                                      burn_in = 500,
+                                      control = NULL) {
+
+  ctrl <- resolve_sampler_control(control, has_Z = TRUE)
 
   y_block <- gdata$Y_block
   X_block <- gdata$X_block
   W_block <- gdata$W
   Z <- gdata$Z_block
 
-  if (is.null(Z)) stop("gdata$Z_block is NULL.")
-  if (is.null(gdata$cov$intX)) stop("gdata$cov$intX is NULL.")
+  if (is.null(Z)) stop("gdata$Z_block is NULL.", call. = FALSE)
+  if (is.null(gdata$cov$intX)) stop("gdata$cov$intX is NULL.", call. = FALSE)
 
   K <- length(gdata$cov$Xcols)
   J0 <- gdata$cov$J0
@@ -202,14 +219,39 @@ gibbs_sampling_moderators <- function(gdata,
   k_tr <- gdata$cov$intX
 
   # priors
-  Sigma_gamma_prior <- 10
-  mu_gamma_prior <- rep(0, G)
+  Sigma_gamma_prior <- ctrl$Sigma_gamma_prior
 
-  a_sigma_alpha_prior <- 2
-  b_sigma_alpha_prior <- 2
+  if (is.null(ctrl$mu_gamma_prior)) {
+    mu_gamma_prior <- rep(0, G)
+  } else {
+    mu_gamma_prior <- as.numeric(ctrl$mu_gamma_prior)
+    if (length(mu_gamma_prior) != G) {
+      stop(sprintf(
+        "control$mu_gamma_prior must have length %d, got %d.",
+        G, length(mu_gamma_prior)
+      ), call. = FALSE)
+    }
+  }
 
-  a_sigma_tau_prior <- 2
-  b_sigma_tau_prior <- 2
+  a_sigma_alpha_prior <- ctrl$a_sigma_alpha_prior
+  b_sigma_alpha_prior <- ctrl$b_sigma_alpha_prior
+
+  a_sigma_tau_prior <- ctrl$a_sigma_tau_prior
+  b_sigma_tau_prior <- ctrl$b_sigma_tau_prior
+
+  # gamma prior precision
+  if (length(Sigma_gamma_prior) == 1) {
+    Sigma_gamma_prior_inv <- diag(1 / Sigma_gamma_prior, G)
+  } else {
+    Sigma_gamma_prior <- as.numeric(Sigma_gamma_prior)
+    if (length(Sigma_gamma_prior) != G) {
+      stop(sprintf(
+        "control$Sigma_gamma_prior must have length 1 or %d, got %d.",
+        G, length(Sigma_gamma_prior)
+      ), call. = FALSE)
+    }
+    Sigma_gamma_prior_inv <- diag(1 / Sigma_gamma_prior, G)
+  }
 
   # initial values
   beta <- matrix(0, K * J0, 1)
@@ -253,8 +295,6 @@ gibbs_sampling_moderators <- function(gdata,
     # ---- gamma update
     beta_matrix <- matrix(beta, ncol = K, byrow = TRUE)
     beta_tr <- as.numeric(beta_matrix[, k_tr, drop = TRUE])
-
-    Sigma_gamma_prior_inv <- diag(1 / Sigma_gamma_prior, G)
 
     V_gamma <- solve(crossprod(Z) / tau[k_tr]^2 + Sigma_gamma_prior_inv)
     rhs <- as.numeric(crossprod(Z, beta_tr)) / tau[k_tr]^2 +

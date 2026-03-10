@@ -1,15 +1,8 @@
-# scmBayesPost 0.2.0
+# scmBayesPost 0.2.3.9000
 
-Major internal refactor.
+Development version.
 
-* Replaced legacy `gibbs_sampling()` with modular samplers
-  - `gibbs_sampling_simple()`
-  - `gibbs_sampling_moderators()`
-
-* Generalized `prepare_data_general()` to support moderators and future multi-outcome models.
-
-* Clean separation between observation model (`f.X`) and heterogeneity model (`f.Z`).
-
-* Simplified Gibbs dispatch logic in `gibbs_postscm()`.
-
-* sim_example.R in scripts/ replaced to run a model with second stage included
+* Added sampler `control` list support in `gibbs_postscm()`.
+* Priors and tuning parameters can now be passed from the top-level API to internal samplers.
+* `gibbs_sampling_simple()` and `gibbs_sampling_moderators()` now use resolved 
+sampler controls rather than hard-coded prior values.

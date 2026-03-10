@@ -4,7 +4,7 @@
 \alias{gibbs_sampling_simple}
 \title{Gibbs sampler for post-SCM model without moderators}
 \usage{
-gibbs_sampling_simple(gdata, n_iter = 1000, burn_in = 500)
+gibbs_sampling_simple(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \description{
 Internal sampler used when no second-stage moderators (f.Z),
