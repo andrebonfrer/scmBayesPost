@@ -43,6 +43,23 @@ prepare_data_general <- function(dta,
   if (!y_name %in% names(dta)) stop("y_name not found in dta.")
   if (is.null(f.X)) stop("Provide f.X.")
 
+  # ---- validate treatment column
+  tr_vec <- dta[[tr_col]]
+
+  if (!is.numeric(tr_vec)) {
+    stop(sprintf("Treatment column '%s' must be numeric.", tr_col), call. = FALSE)
+  }
+
+  if (treat_type == "binary") {
+    tr_vals <- unique(stats::na.omit(tr_vec))
+    if (!all(tr_vals %in% c(0, 1))) {
+      stop(sprintf(
+        "Treatment column '%s' must contain only 0/1 values when treat_type = 'binary'.",
+        tr_col
+      ), call. = FALSE)
+    }
+  }
+
   # ---- canonical unit universe + ordering
   id_universe <- as.character(unique(dta[[id_col]]))
   Tn <- data.table::uniqueN(dta[[time_col]])
