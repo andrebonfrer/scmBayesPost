@@ -4,6 +4,7 @@
 ~%2FRPackages%2FscmBayesPost%2FDESCRIPTION="BCE13212"
 ~%2FRPackages%2FscmBayesPost%2FNAMESPACE="3487C241"
 ~%2FRPackages%2FscmBayesPost%2FNEWS.md="087EEE99"
+~%2FRPackages%2FscmBayesPost%2FR%2FCommonTrends.R="2A3A7958"
 ~%2FRPackages%2FscmBayesPost%2FR%2Fgibbs_sampling.R="11C9B58E"
 ~%2FRPackages%2FscmBayesPost%2FR%2Fglobals.R="3FE1EC2E"
 ~%2FRPackages%2FscmBayesPost%2FR%2Fhello.R="A6B34C52"
