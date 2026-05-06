@@ -6,6 +6,7 @@
 ~%2FRPackages%2FscmBayesPost%2FNEWS.md="087EEE99"
 ~%2FRPackages%2FscmBayesPost%2FR%2FBalanceDiagnostics.R="E0A3FD7F"
 ~%2FRPackages%2FscmBayesPost%2FR%2FCommonTrends.R="2A3A7958"
+~%2FRPackages%2FscmBayesPost%2FR%2FConvergenceDiagnostics.R="343CB143"
 ~%2FRPackages%2FscmBayesPost%2FR%2FWeightDiagnostics.R="131BB2C3"
 ~%2FRPackages%2FscmBayesPost%2FR%2Fgibbs_sampling.R="11C9B58E"
 ~%2FRPackages%2FscmBayesPost%2FR%2Fglobals.R="3FE1EC2E"
