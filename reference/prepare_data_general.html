@@ -18,7 +18,7 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.5.9000</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.6</span>
       </span>
     </div>
 
@@ -61,7 +61,7 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
 <span>  tr_col <span class="op">=</span> <span class="st">"tvg.dummy"</span>,</span>
 <span>  treat_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  second_stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"moderators"</span>, <span class="st">"moderators_iv"</span><span class="op">)</span>,</span>
-<span>  first_stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"selection_probit"</span>, <span class="st">"treat_iv"</span><span class="op">)</span>,</span>
+<span>  first_stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"selection_probit"</span>, <span class="st">"selection_probit_bayes"</span>, <span class="st">"treat_iv"</span><span class="op">)</span>,</span>
 <span>  treat_threshold <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -116,11 +116,29 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
 
 
 <dt id="arg-first-stage">first_stage<a class="anchor" aria-label="anchor" href="#arg-first-stage"></a></dt>
-<dd><p>"none","selection_probit","treat_iv".</p></dd>
+<dd><p>"none","selection_probit","selection_probit_bayes","treat_iv".</p><dl><dt>"none"</dt>
+<dd><p>No first stage.</p></dd>
+
+<dt>"selection_probit"</dt>
+<dd><p>Frequentist probit. Computes GR; user includes
+it in f.X manually. No Bayesian first-stage Gibbs step.</p></dd>
+
+<dt>"selection_probit_bayes"</dt>
+<dd><p>Fully Bayesian probit first stage via
+Albert-Chib augmentation. Populates gdata$first_stage with X_fs, d,
+and MLE starting values. The Gibbs sampler samples delta and z* jointly
+with the outcome equation parameters. Requires a second formula block
+in f.X: <code>outcome ~ covars | treatment ~ selection_covars</code>.</p></dd>
+
+<dt>"treat_iv"</dt>
+<dd><p>Placeholder hook for IV/CF first stage.</p></dd>
+
+
+</dl></dd>
 
 
 <dt id="arg-treat-threshold">treat_threshold<a class="anchor" aria-label="anchor" href="#arg-treat-threshold"></a></dt>
-<dd><p>threshold for continuous treated definition when inferring treated set.</p></dd>
+<dd><p>threshold for continuous treated definition.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -129,7 +147,9 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>list with Y_block, X_block, W, Z_block (optional), instruments (optional), and metadata.</p>
+    <p>list with Y_block, X_block, W, Z_block (optional), instruments
+(optional), and metadata. When first_stage = "selection_probit_bayes",
+gdata$first_stage contains X_fs, d, delta0, and fit.</p>
     </div>
 
   </div>
