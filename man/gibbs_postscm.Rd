@@ -7,24 +7,29 @@
 gibbs_postscm(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \arguments{
-\item{gdata}{Output from \code{\link[=prepare_data_general]{prepare_data_general()}}.}
+\item{gdata}{Output from \code{prepare_data_general()}.}
 
 \item{n_iter}{Integer. Total number of Gibbs iterations.}
 
 \item{burn_in}{Integer. Number of initial iterations discarded.}
 
 \item{control}{Optional list of sampler control parameters and priors.
-Supported entries currently include:
+Supported entries:
 \describe{
 \item{\code{Sigma_gamma_prior}}{Prior variance for second-stage
-\eqn{\gamma} coefficients. Can be a scalar or a vector of length
+\eqn{\gamma} coefficients. Scalar or vector of length
 \code{ncol(Z_block)}.}
 \item{\code{mu_gamma_prior}}{Prior mean vector for \eqn{\gamma}.
 Defaults to zero.}
 \item{\code{a_sigma_alpha_prior}, \code{b_sigma_alpha_prior}}{
-Shape/rate hyperparameters for the observation-noise variance prior.}
+Shape/rate for the observation-noise variance prior.}
 \item{\code{a_sigma_tau_prior}, \code{b_sigma_tau_prior}}{
-Shape/rate hyperparameters for the coefficient-dispersion prior.}
+Shape/rate for the coefficient-dispersion prior.}
+\item{\code{mu_delta_prior}}{Prior mean for first-stage probit
+coefficients \eqn{\delta}. Numeric vector of length
+\code{ncol(X_fs)}. Defaults to zero.}
+\item{\code{Sigma_delta_prior}}{Prior variance for \eqn{\delta}.
+Scalar or vector of length \code{ncol(X_fs)}. Default 10.}
 }}
 }
 \value{
@@ -32,6 +37,6 @@ A list of posterior draws.
 }
 \description{
 Dispatches to the appropriate internal Gibbs sampler depending on whether
-the prepared data object includes moderators and whether the model is
-single- or multi-outcome.
+the prepared data object includes a Bayesian probit first stage, moderators,
+and whether the model is single- or multi-outcome.
 }

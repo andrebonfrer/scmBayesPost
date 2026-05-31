@@ -42,11 +42,11 @@
 #'   \item{Max weight}{Largest single donor weight.  Above ~0.3 suggests
 #'     substantial reliance on a single donor.}
 #'   \item{N_nonzero}{Number of donors with weight above \code{threshold}.}
-#'   \item{Gini}{Gini coefficient of the weight vector.  0 = perfectly uniform;
-#'     1 = all weight on one donor.}
+#'   \item{Gini}{Gini coefficient of the weight vector.  when 0 it is perfectly uniform;
+#'     when 1 this means all weight is on one donor.}
 #'   \item{Entropy}{Shannon entropy: \eqn{-\sum_d w_d \log(w_d)}.  Higher =
 #'     more spread.  Normalised by \eqn{\log(N_{\text{donors}})} to lie in
-#'     [0, 1].}
+#'     \[0, 1\].}
 #' }
 #'
 #' @param fit         List returned by \code{multiout_synth()}.

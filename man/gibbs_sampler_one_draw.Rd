@@ -7,49 +7,27 @@
 gibbs_sampler_one_draw(y, X, beta, sigma2)
 }
 \arguments{
-\item{y}{A vector of the response variable values (n x 1).}
+\item{y}{Response vector \eqn{[n \times 1]}.}
 
-\item{X}{A matrix of the explanatory variables (n x p), including the intercept.}
+\item{X}{Design matrix \eqn{[n \times p]}, including intercept.}
 
-\item{beta}{A vector of current values of the regression coefficients (p x 1).}
+\item{beta}{Current coefficient vector, length \eqn{p}.}
 
-\item{sigma2}{The current value of the variance of the errors.}
+\item{sigma2}{Current error variance.}
 }
 \value{
-A list with the following components:
-\describe{
-\item{beta_sample}{A vector of the sampled regression coefficients.}
-\item{sigma2_sample}{The sampled variance of the errors.}
-\item{residuals}{The residuals from the regression, i.e., y - X * beta.}
-}
+A list with elements \code{betaZ}, \code{sigmaZ2}, \code{residuals}.
 }
 \description{
-This function performs one iteration of a Gibbs sampler for a simple OLS
-(Ordinary Least Squares) regression model. It samples the coefficients
-(beta) and the variance of the errors (sigma^2) given the current data and
-parameters. Note there is currently no prior that can be passed here.
+Samples regression coefficients \eqn{\beta} and error variance
+\eqn{\sigma^2} from their full conditionals under a flat prior on
+\eqn{\beta} and an improper Jeffreys prior on \eqn{\sigma^2}.
 }
 \examples{
-# Simulated data example
 set.seed(123)
-n <- 100
-p <- 2
-X <- cbind(1, rnorm(n))  # Design matrix (including intercept term)
-beta_true <- c(2, 3)  # True beta coefficients
-sigma2_true <- 1  # True variance of the error
+X <- cbind(1, rnorm(100))
+y <- X \%*\% c(2, 3) + rnorm(100)
+out <- gibbs_sampler_one_draw(y, X, rep(0, 2), 1)
+print(out$betaZ)
 
-# Generate y according to the model y = X * beta + noise
-y <- X \%*\% beta_true + rnorm(n, mean = 0, sd = sqrt(sigma2_true))
-
-# Initial values for beta and sigma^2
-beta_init <- rep(0, p)
-sigma2_init <- 1
-
-# Run one iteration of the Gibbs sampler
-sample_result <- gibbs_sampler_one_draw(y, X, beta_init, sigma2_init)
-
-# Output
-print(sample_result$beta_sample)
-print(sample_result$sigma2_sample)
-print(sample_result$residuals[1:10])
 }

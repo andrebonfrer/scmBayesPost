@@ -84,10 +84,12 @@
 #' @param verbose    Logical.  Print header with sample counts and L.
 #'   Default \code{TRUE}.
 #'
-#' @return A \code{data.frame} (invisibly) with columns:
-#'   \code{Outcome}, \code{Mean_Treated}, [\code{SD_Treated}],
-#'   \code{Mean_Synthetic}, [\code{Mean_Donors}],
-#'   \code{SMD_Synthetic}, [\code{SMD_Donors}], \code{RMSE}.
+#' @return A \code{data.frame} (invisibly) with columns
+#'   \code{Outcome}, \code{Mean_Treated}, \code{Mean_Synthetic},
+#'   and \code{RMSE}. When \code{show_sd = TRUE}, \code{SD_Treated}
+#'   is added. When \code{show_donors_mean = TRUE}, \code{Mean_Donors}
+#'   and \code{SMD_Donors} are added. \code{SMD_Synthetic} is always
+#'   present.
 #'
 #' @examples
 #' \dontrun{
@@ -104,9 +106,8 @@
 #'               caption = "Pre-treatment balance",
 #'               label   = "tab:balance")
 #'
-#' # Love plot of SMDs
+#' # Love plot of SMDs (missing loveplot?)
 #' tab <- balance_table(fit, Y_list, treat_time, L, show_donors_mean = TRUE)
-#' love_plot(tab)
 #' }
 #'
 #' @export

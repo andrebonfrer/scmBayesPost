@@ -16,7 +16,7 @@ prepare_data_general(
   tr_col = "tvg.dummy",
   treat_type = c("binary", "continuous"),
   second_stage = c("none", "moderators", "moderators_iv"),
-  first_stage = c("none", "selection_probit", "treat_iv"),
+  first_stage = c("none", "selection_probit", "selection_probit_bayes", "treat_iv"),
   treat_threshold = 0,
   verbose = TRUE
 )
@@ -44,14 +44,27 @@ prepare_data_general(
 
 \item{second_stage}{"none","moderators","moderators_iv".}
 
-\item{first_stage}{"none","selection_probit","treat_iv".}
+\item{first_stage}{"none","selection_probit","selection_probit_bayes","treat_iv".
+\describe{
+\item{"none"}{No first stage.}
+\item{"selection_probit"}{Frequentist probit. Computes GR; user includes
+it in f.X manually. No Bayesian first-stage Gibbs step.}
+\item{"selection_probit_bayes"}{Fully Bayesian probit first stage via
+Albert-Chib augmentation. Populates gdata$first_stage with X_fs, d,
+and MLE starting values. The Gibbs sampler samples delta and z* jointly
+with the outcome equation parameters. Requires a second formula block
+in f.X: \code{outcome ~ covars | treatment ~ selection_covars}.}
+\item{"treat_iv"}{Placeholder hook for IV/CF first stage.}
+}}
 
-\item{treat_threshold}{threshold for continuous treated definition when inferring treated set.}
+\item{treat_threshold}{threshold for continuous treated definition.}
 
 \item{verbose}{logical.}
 }
 \value{
-list with Y_block, X_block, W, Z_block (optional), instruments (optional), and metadata.
+list with Y_block, X_block, W, Z_block (optional), instruments
+(optional), and metadata. When first_stage = "selection_probit_bayes",
+gdata$first_stage contains X_fs, d, delta0, and fit.
 }
 \description{
 Build stacked outcome/design matrices and weights for downstream estimation.

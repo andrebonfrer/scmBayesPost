@@ -41,7 +41,7 @@ gdata <- prepare_data_general(
   dta = dt,
   W   = W,
   y_name = "y",
-  f.X = y ~ 1 + tvg.dummy,     # minimal: intercept + treatment
+  f.X = y ~ tvg.dummy,     # minimal: treatment
   # no f.Z
   id_col = "id",
   time_col = "wID",

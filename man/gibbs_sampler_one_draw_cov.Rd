@@ -12,71 +12,32 @@ gibbs_sampler_one_draw_cov(
 )
 }
 \arguments{
-\item{y_list}{A list of outcome vectors. Each element \eqn{y_j} in the list corresponds to the outcomes for one dependent variable.}
+\item{y_list}{List of outcome vectors, one per dependent variable.}
 
-\item{X_list}{A list of predictor matrices. Each element \eqn{X_j} in the list corresponds to the predictor matrix for the corresponding outcome \eqn{y_j}.}
+\item{X_list}{List of predictor matrices, one per outcome.}
 
-\item{sigma_param}{A list of initial values for the residual variances \eqn{\sigma^2_j} for each outcome when \code{covariance_type = "diagonal"}, or a dense covariance matrix when \code{covariance_type = "dense"}.}
+\item{sigma_param}{For \code{"diagonal"}: list of initial \eqn{\sigma^2_j}
+values. For \code{"dense"}: initial covariance matrix \eqn{\Sigma}.}
 
-\item{covariance_type}{A string specifying the type of covariance matrix to use. Can be either \code{"diagonal"} (no correlation between outcomes) or \code{"dense"} (allows correlation between outcomes).}
+\item{covariance_type}{\code{"diagonal"} or \code{"dense"}.}
 }
 \value{
-A list with the following elements:
-\describe{
-\item{\code{beta_samples}}{A list of sampled regression coefficients \eqn{\beta_j} for each outcome.}
-\item{\code{sigma2_samples}}{A list of sampled residual variances \eqn{\sigma^2_j} for each outcome (diagonal case), or the sampled covariance matrix \eqn{\Sigma} (dense case).}
-\item{\code{residuals}}{A list of residuals for each outcome \eqn{r_j = y_j - X_j \beta_j}.}
-}
+A list with elements \code{beta_samples}, \code{sigma2_samples},
+\code{residuals}, \code{predicted}, and \code{covariance}.
 }
 \description{
-This function performs a single Gibbs sampling draw for a multivariate regression model with an option
-to use either a dense or diagonal covariance matrix for the outcomes. Each outcome has its own set of predictors.
-}
-\details{
-The model assumes that each outcome \eqn{y_j} follows a regression model:
-\deqn{y_j = X_j \beta_j + \epsilon_j, \quad \epsilon_j \sim \mathcal{N}(0, \Sigma)}
-where \eqn{X_j} is the predictor matrix for outcome \eqn{y_j}, \eqn{\beta_j} is the vector of regression
-coefficients, and \eqn{\Sigma} is the covariance matrix of the residuals. The covariance matrix can either
-be diagonal (independent outcomes) or dense (allowing correlation between outcomes).
+Performs a single Gibbs sampling draw for a multivariate regression model.
+Each outcome has its own predictor matrix. Supports diagonal (independent)
+or dense (correlated) residual covariance structures.
 }
 \examples{
-# Simulate data for two outcomes with different predictor matrices
 set.seed(123)
-n <- 100  # Number of observations
-p <- 2    # Number of outcomes
-
-# Create predictor matrices X for each outcome
-X1 <- cbind(1, rnorm(n))
-X2 <- cbind(1, rnorm(n), rnorm(n))
-
-# True beta values
-beta1 <- c(1, 0.5)
-beta2 <- c(1, -0.3, 0.2)
-
-# Simulate outcomes
-y1 <- X1 \%*\% beta1 + rnorm(n)
-y2 <- X2 \%*\% beta2 + rnorm(n)
-
-# Prepare data for the Gibbs sampler
-y_list <- list(y1, y2)
-X_list <- list(X1, X2)
-sigma_param <- list(1, 1)  # Diagonal case: Initial values for sigma^2
-
-# Run the Gibbs sampler with diagonal covariance
-result_diag <-
-    gibbs_sampler_one_draw_cov(y_list, X_list,
-                              sigma_param,
-                              covariance_type = "diagonal")
-print(result_diag)
-
-# Simulate a dense covariance matrix
-sigma_param_dense <- matrix(c(1, 0.5, 0.5, 1), 2, 2)  # Dense covariance matrix
-
-# Run the Gibbs sampler with dense covariance
-result_dense <-
-    gibbs_sampler_one_draw_cov(y_list, X_list,
-                              sigma_param_dense,
-                              covariance_type = "dense")
-print(result_dense)
+n <- 100
+X1 <- cbind(1, rnorm(n)); X2 <- cbind(1, rnorm(n), rnorm(n))
+y1 <- X1 \%*\% c(1, 0.5) + rnorm(n)
+y2 <- X2 \%*\% c(1, -0.3, 0.2) + rnorm(n)
+out <- gibbs_sampler_one_draw_cov(list(y1, y2), list(X1, X2),
+                                  list(1, 1), "diagonal")
+print(out$beta_samples)
 
 }

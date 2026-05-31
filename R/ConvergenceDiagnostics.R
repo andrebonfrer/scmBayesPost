@@ -30,7 +30,7 @@
 #' @param fit          Output list from gibbs_postscm().
 #' @param include_beta Logical. Include beta columns? Default FALSE.
 #'
-#' @return A numeric matrix [n_save x n_params] with column names.
+#' @return A numeric matrix \[n_save x n_params\] with column names.
 #' @keywords internal
 .extract_draws_matrix <- function(fit, include_beta = FALSE) {
 

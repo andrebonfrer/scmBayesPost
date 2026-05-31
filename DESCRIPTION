@@ -7,7 +7,6 @@ Description: Generalizes mscPost to accept synthetic-control / augmented-synth w
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Imports:
   data.table,
   Matrix,
@@ -18,3 +17,4 @@ Imports:
   truncnorm
 Suggests:
   MCMCpack
+Config/roxygen2/version: 8.0.0

@@ -11,5 +11,10 @@ Generalizes mscPost to accept synthetic-control / augmented-synth weights from m
 \author{
 \strong{Maintainer}: Andre Bonfrer \email{andre.bonfrer@deakin.edu.au}
 
+Authors:
+\itemize{
+  \item Andre Bonfrer \email{andre.bonfrer@deakin.edu.au}
+}
+
 }
 \keyword{internal}
