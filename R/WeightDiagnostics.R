@@ -25,6 +25,10 @@
 ##                     donor usage frequency, weight Lorenz curve
 ################################################################################
 
+utils::globalVariables(c(
+  "N_eff", "max_weight", "total_weight", "donor_id",
+  "pct_treated", "cum_units", "cum_weight"
+))
 
 #' Donor Weight Distribution Diagnostics for multiout_synth Objects
 #'
@@ -92,6 +96,7 @@
 #'
 #' @seealso \code{\link{plot_weight_diagnostics}}, \code{\link{balance_table}}
 #' @export
+#' @importFrom stats setNames
 weight_diagnostics <- function(fit,
                                unit_ids    = NULL,
                                threshold   = 0.01,

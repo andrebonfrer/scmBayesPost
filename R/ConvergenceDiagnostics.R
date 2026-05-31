@@ -383,6 +383,10 @@ compute_rhat <- function(gdata,
 #' @param min_ess      ESS adequacy threshold. Default 200.
 #' @param rhat_thresh  R-hat convergence threshold. Default 1.1.
 #' @param show_traces  Logical. Display trace plots? Default TRUE.
+#' @param package      Character. Name of the package to load inside each worker
+#'   when \code{run_rhat = TRUE}, so that sampler dependencies are available
+#'   in parallel worker sessions. E.g. \code{package = "scmBayesPost"}.
+#'   Only needed when \code{run_rhat = TRUE}. Default \code{NULL}.
 #'
 #' @return Invisibly returns a list with elements:
 #'   $ess               data frame from compute_ess()

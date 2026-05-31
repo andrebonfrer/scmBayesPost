@@ -27,6 +27,11 @@ convergence_summary(
 \item{sampler_fn}{The sampler function. Passed to compute_rhat(). Defaults
 to gibbs_postscm if found, otherwise supply explicitly.}
 
+\item{package}{Character. Name of the package to load inside each worker
+when \code{run_rhat = TRUE}, so that sampler dependencies are available
+in parallel worker sessions. E.g. \code{package = "scmBayesPost"}.
+Only needed when \code{run_rhat = TRUE}. Default \code{NULL}.}
+
 \item{run_rhat}{Logical. Run multi-chain R-hat? Default FALSE.}
 
 \item{n_chains}{Passed to compute_rhat(). Default 4.}

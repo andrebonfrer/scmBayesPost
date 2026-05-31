@@ -25,6 +25,7 @@
 ##    - Markdown via knitr        (format = "markdown")
 ################################################################################
 
+utils::globalVariables(c("SMD", "Outcome", "Comparison"))
 
 #' Pre-Treatment Balance Diagnostics Table for multiout_synth Objects
 #'
@@ -111,6 +112,7 @@
 #' }
 #'
 #' @export
+#' @importFrom stats sd
 balance_table <- function(fit,
                           Y_list,
                           treat_time,

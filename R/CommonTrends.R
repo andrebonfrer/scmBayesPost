@@ -601,6 +601,7 @@ plot_pretrend <- function(results, outcomes = NULL, ...) {
 #'
 #' @seealso \code{\link{pretrend_test}}, \code{\link{plot_pretrend}}
 #' @export
+#' @importFrom stats setNames
 summary_pretrend <- function(results,
                              outcomes     = NULL,
                              alpha        = 0.05,
