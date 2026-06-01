@@ -1,13 +1,5 @@
-# scmBayesPost 0.2.6
+# scmBayesPost 0.2.7
 
-## New features
-- Bayesian probit first stage (`first_stage = "selection_probit_bayes"`) 
-  via Albert-Chib augmentation in `gibbs_sampling_selection()`
-- `prepare_data_general()` now populates `gdata$first_stage` with `X_fs`, 
-  `d`, and MLE starting values when `first_stage = "selection_probit_bayes"`
-
-## Bug fixes
-- Fixed broken `@return` Rd link in `BalanceDiagnostics.R`
-- `resolve_sampler_control()` now accepts `mu_delta_prior` and 
-  `Sigma_delta_prior`
-- Progress bar now closed properly after Gibbs iterations
+* Performance: Optional `fixest` support for faster first-stage probit estimation in large panels
+* Fixed: Dependency warning with fixest coefficient extraction
+* Documentation improvements for Bayesian selection models
