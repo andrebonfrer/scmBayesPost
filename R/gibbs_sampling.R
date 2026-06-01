@@ -7,7 +7,8 @@
 #  gibbs_postscm()                  dispatcher
 #  gibbs_sampling_simple()          single outcome, no moderators, no first stage
 #  gibbs_sampling_moderators()      single outcome, with second-stage moderators
-#  gibbs_sampling_selection()       single outcome, Bayesian probit first stage
+#  gibbs_sampling_selection()                 single outcome, Bayesian probit first stage
+#  gibbs_sampling_selection_moderators()  first stage + second-stage moderators
 #  .build_nu_hat_stacked()          internal helper for selection sampler
 #  gibbs_binomial_probit()          standalone Albert-Chib probit Gibbs draw
 #  gibbs_sampler_one_draw()         standalone OLS Gibbs draw
@@ -107,15 +108,19 @@ gibbs_postscm <- function(gdata,
   ctrl <- resolve_sampler_control(control = control, has_Z = has_Z)
 
   # ---------- single outcome, Bayesian selection first stage ----------
-  # Takes priority: first stage + outcome equation estimated jointly.
-  # Moderators not yet supported simultaneously with first stage.
-  if (M == 1 && has_fs) {
-    if (has_Z)
-      warning(paste0(
-        "Z_block detected alongside selection_probit_bayes. ",
-        "Second-stage moderators are not yet jointly estimated with the ",
-        "Bayesian probit first stage. Moderators will be ignored."
-      ))
+
+  if (M == 1 && has_fs && has_Z) {
+    return(
+      gibbs_sampling_selection_moderators(
+        gdata   = gdata,
+        n_iter  = n_iter,
+        burn_in = burn_in,
+        control = ctrl
+      )
+    )
+  }
+
+  if (M == 1 && has_fs && !has_Z) {
     return(
       gibbs_sampling_selection(
         gdata   = gdata,
@@ -413,10 +418,9 @@ gibbs_sampling_moderators <- function(gdata,
 #' \deqn{y_i = x_i^\top \beta + \rho\,\hat\nu_i + \varepsilon_i,
 #'       \quad \varepsilon_i \sim N(0,\sigma^2)}
 #'
-#' where \eqn{\hat\nu_i = z^*_i - x_{fs,i}^\top\delta} is the selection
-#' structural residual. \eqn{\rho} is identified as the coefficient on
-#' \eqn{\hat\nu} in the augmented outcome equation and is sampled as part
-#' of \eqn{\beta}.
+#' \eqn{\rho} is a single global coefficient on \eqn{\hat\nu} and is
+#' sampled separately from the block-diagonal \eqn{\beta} to avoid
+#' dimension mismatches with the Kronecker prior structure.
 #'
 #' Invoked when \code{gdata$cov$first_stage == "selection_probit_bayes"}.
 #'
@@ -432,8 +436,8 @@ gibbs_sampling_selection <- function(gdata,
   y_block <- gdata$Y_block
   X_block <- gdata$X_block
   W_block <- gdata$W
-  K  <- length(gdata$cov$Xcols)
-  J0 <- gdata$cov$J0
+  K  <- length(gdata$cov$Xcols)   # covariates per unit (outcome equation)
+  J0 <- gdata$cov$J0              # number of treated units
 
   # ---- unpack first-stage objects
   fs    <- gdata$first_stage
@@ -456,6 +460,10 @@ gibbs_sampling_selection <- function(gdata,
   b_sigma_alpha_prior <- ctrl$b_sigma_alpha_prior
   a_sigma_tau_prior   <- ctrl$a_sigma_tau_prior
   b_sigma_tau_prior   <- ctrl$b_sigma_tau_prior
+
+  # rho prior: N(0, sigma2_rho_prior) — separate from block-diagonal beta prior
+  sigma2_rho_prior <- if (!is.null(ctrl$sigma2_rho_prior))
+    as.numeric(ctrl$sigma2_rho_prior) else 10
 
   # ---- first-stage probit priors
   mu_delta_prior <- if (is.null(ctrl$mu_delta_prior)) {
@@ -484,25 +492,35 @@ gibbs_sampling_selection <- function(gdata,
   }
 
   # ---- precompute first-stage cross-products (fixed across iterations)
-  XfsXfs      <- crossprod(X_fs)
+  XfsXfs       <- crossprod(X_fs)
   A_delta_base <- XfsXfs + Sigma_delta_prior_inv
 
+  # ---- dimension note -------------------------------------------------
+  # X_block is [N_stacked x K*J0] block-diagonal (K covariates per unit).
+  # nu_hat_stacked is [N_stacked x 1] — a SINGLE global column, NOT one
+  # column per unit. The coefficient rho is therefore a scalar, sampled
+  # separately from the K*J0 block-diagonal beta vector to avoid the
+  # Kronecker dimension mismatch that arises when treating rho as part
+  # of a (K+1)*J0 structure.
+  # ---------------------------------------------------------------------
+
   # ---- initial values
-  # beta has K+1 entries per unit: original K covariates + rho (nu_hat coef)
-  beta   <- matrix(0, (K + 1) * J0, 1)
-  delta  <- if (!is.null(fs$delta0)) as.numeric(fs$delta0) else rep(0, p_fs)
-  sigma2 <- 1
-  tau    <- rep(1, K + 1)
+  beta_bd <- matrix(0, K * J0, 1)   # unit-specific outcome coefficients
+  rho     <- 0                       # scalar global selection correction
+  delta   <- if (!is.null(fs$delta0)) as.numeric(fs$delta0) else rep(0, p_fs)
+  sigma2  <- 1
+  tau     <- rep(1, K)               # K dispersion params for beta_bd only
 
   # initialise z_star consistently with observed treatment
   z_star <- ifelse(d_vec == 1, 0.5, -0.5)
 
   # ---- storage
   n_save         <- n_iter - burn_in
-  beta_samples   <- matrix(0, n_save, (K + 1) * J0)
+  beta_samples   <- matrix(0, n_save, K * J0)
+  rho_samples    <- numeric(n_save)
   delta_samples  <- matrix(0, n_save, p_fs)
   sigma2_samples <- numeric(n_save)
-  tau_samples    <- matrix(0, n_save, K + 1)
+  tau_samples    <- matrix(0, n_save, K)
 
   pb <- utils::txtProgressBar(min = 0, max = n_iter, style = 3)
 
@@ -510,7 +528,7 @@ gibbs_sampling_selection <- function(gdata,
 
     # ==================================================================
     # BLOCK 1: Sample z*_i  (Albert-Chib latent utility augmentation)
-    # z*_i | delta, d_i = 1 ~ TN_{[0, Inf)}(x_fs_i' delta, 1)
+    # z*_i | delta, d_i = 1 ~ TN_{[0,  Inf)}(x_fs_i' delta, 1)
     # z*_i | delta, d_i = 0 ~ TN_{(-Inf, 0)}(x_fs_i' delta, 1)
     # ==================================================================
     eta <- as.numeric(X_fs %*% delta)
@@ -535,9 +553,8 @@ gibbs_sampling_selection <- function(gdata,
     delta       <- rMVNormCovariance(1, mu = mu_delta, Sigma = A_delta_inv)
 
     # ==================================================================
-    # BLOCK 3: Build nu_hat and augment outcome design matrix
+    # BLOCK 3: Build nu_hat (stacked to match X_block row ordering)
     # nu_hat_i = z*_i - x_fs_i' delta
-    # Append as extra column to X_block so rho is sampled as part of beta
     # ==================================================================
     nu_hat <- z_star - as.numeric(X_fs %*% delta)
 
@@ -548,38 +565,65 @@ gibbs_sampling_selection <- function(gdata,
       dta_wID  = gdata$dtaidx[["wID"]]
     )
 
-    X_aug <- cbind(X_block, Matrix::Matrix(nu_hat_stacked, ncol = 1))
+    nu_col <- Matrix::Matrix(nu_hat_stacked, ncol = 1)  # [N_stacked x 1]
 
     # ==================================================================
-    # BLOCK 4: Sample beta (and rho) | y, X_aug, sigma2, tau
-    # Prior mean is zero; K+1 dispersion params in tau
+    # BLOCK 4a: Sample beta_bd | y, X_block, rho, nu_col, sigma2, tau
+    #
+    # Partial out rho: y_tilde = y - nu_col * rho
+    # beta_bd | y_tilde ~ N(A_bd_inv b_bd, A_bd_inv)
+    # with block-diagonal prior precision diag(J0) x diag(1/tau)
     # ==================================================================
-    XtW    <- Matrix::t(X_aug) %*% W_block
-    XtWX   <- XtW %*% X_aug
-    XtWy   <- XtW %*% y_block
+    y_tilde <- y_block - nu_col * rho
 
     Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
-    A_beta  <- XtWX / sigma2 + Sigma_beta_prior_inv
-    b_beta  <- XtWy / sigma2
-    cA_beta    <- Matrix::chol(A_beta)
-    A_beta_inv <- Matrix::chol2inv(cA_beta)
-    mu_beta    <- A_beta_inv %*% b_beta
-    beta <- rMVNormCovariance(1, mu = as.numeric(mu_beta), Sigma = A_beta_inv)
+
+    XtW_bd  <- Matrix::t(X_block) %*% W_block
+    XtWX_bd <- XtW_bd %*% X_block
+    XtWy_bd <- XtW_bd %*% y_tilde
+
+    A_bd  <- XtWX_bd / sigma2 + Sigma_beta_prior_inv
+    b_bd  <- XtWy_bd / sigma2
+
+    cA_bd    <- Matrix::chol(A_bd)
+    A_bd_inv <- Matrix::chol2inv(cA_bd)
+    mu_bd    <- A_bd_inv %*% b_bd
+
+    beta_bd <- rMVNormCovariance(1,
+                                 mu    = as.numeric(mu_bd),
+                                 Sigma = A_bd_inv)
 
     # ==================================================================
-    # BLOCK 5: Sample sigma2 | y, X_aug, beta
+    # BLOCK 4b: Sample rho (scalar) | y, X_block, beta_bd, nu_col, sigma2
+    #
+    # Partial out beta_bd: y_tilde2 = y - X_block %*% beta_bd
+    # rho | y_tilde2 ~ N(m_rho, v_rho)
+    # v_rho = 1 / (nu'Wnu/sigma2 + 1/sigma2_rho_prior)
+    # m_rho = v_rho * nu'W y_tilde2 / sigma2
     # ==================================================================
-    residuals  <- y_block - X_aug %*% beta
-    alpha_s    <- a_sigma_alpha_prior + length(y_block) / 2
-    beta_s     <- b_sigma_alpha_prior +
+    y_tilde2 <- y_block - X_block %*% beta_bd
+
+    nuWnu <- as.numeric(Matrix::t(nu_col) %*% W_block %*% nu_col)
+    nuWy2 <- as.numeric(Matrix::t(nu_col) %*% W_block %*% y_tilde2)
+
+    v_rho <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
+    m_rho <- v_rho * nuWy2 / sigma2
+    rho   <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
+
+    # ==================================================================
+    # BLOCK 5: Sample sigma2 | y, X_block, beta_bd, rho, nu_col
+    # ==================================================================
+    residuals <- y_block - X_block %*% beta_bd - nu_col * rho
+    alpha_s   <- a_sigma_alpha_prior + length(y_block) / 2
+    beta_s    <- b_sigma_alpha_prior +
       as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
     sigma2 <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
 
     # ==================================================================
-    # BLOCK 6: Sample tau_k | beta  (K+1 dispersion params)
+    # BLOCK 6: Sample tau_k | beta_bd  (K dispersion params, block-diag only)
     # ==================================================================
-    beta_matrix <- matrix(beta, ncol = K + 1, byrow = TRUE)
-    for (k in seq_len(K + 1)) {
+    beta_matrix <- matrix(beta_bd, ncol = K, byrow = TRUE)
+    for (k in seq_len(K)) {
       tau[k] <- sqrt(1 / stats::rgamma(
         1,
         shape = a_sigma_tau_prior + J0 / 2,
@@ -590,7 +634,8 @@ gibbs_sampling_selection <- function(gdata,
     # ---- store
     if (iter > burn_in) {
       s <- iter - burn_in
-      beta_samples[s, ]  <- as.numeric(beta)
+      beta_samples[s, ]  <- as.numeric(beta_bd)
+      rho_samples[s]     <- rho
       delta_samples[s, ] <- as.numeric(delta)
       sigma2_samples[s]  <- sigma2
       tau_samples[s, ]   <- tau
@@ -602,10 +647,267 @@ gibbs_sampling_selection <- function(gdata,
   close(pb)
 
   colnames(delta_samples) <- colnames(X_fs)
-  colnames(tau_samples)   <- c(gdata$cov$Xcols, "rho_tau")
+  colnames(tau_samples)   <- gdata$cov$Xcols
 
   list(
     beta_samples   = beta_samples,
+    rho_samples    = rho_samples,
+    delta_samples  = delta_samples,
+    sigma2_samples = sigma2_samples,
+    tau_samples    = tau_samples
+  )
+}
+
+
+# -----------------------------------------------------------------------------
+#' Gibbs sampler for post-SCM model with Bayesian probit first stage
+#' AND second-stage moderators
+#'
+#' Combines Albert-Chib (1993) latent utility augmentation for the selection
+#' first stage with the hierarchical moderator equation for treatment effect
+#' heterogeneity. rho (selection correction) is sampled as a scalar separate
+#' from the block-diagonal beta, avoiding Kronecker dimension mismatches.
+#'
+#' @keywords internal
+gibbs_sampling_selection_moderators <- function(gdata,
+                                                n_iter  = 1000,
+                                                burn_in = 500,
+                                                control = NULL) {
+
+  ctrl <- resolve_sampler_control(control, has_Z = TRUE)
+
+  # ---- unpack outcome equation objects
+  y_block <- gdata$Y_block
+  X_block <- gdata$X_block
+  W_block <- gdata$W
+  Z       <- gdata$Z_block
+
+  if (is.null(Z))
+    stop("gdata$Z_block is NULL.", call. = FALSE)
+
+  K    <- length(gdata$cov$Xcols)
+  J0   <- gdata$cov$J0
+  G    <- ncol(Z)
+  k_tr <- gdata$cov$intX
+
+  # ---- unpack first-stage objects
+  fs    <- gdata$first_stage
+  X_fs  <- fs$X_fs
+  d_vec <- as.numeric(fs$d)
+  n_obs <- length(d_vec)
+  p_fs  <- ncol(X_fs)
+
+  if (is.null(X_fs))
+    stop("gdata$first_stage$X_fs is NULL.", call. = FALSE)
+  if (nrow(X_fs) != n_obs)
+    stop("nrow(X_fs) != length(d).", call. = FALSE)
+
+  # ---- outcome equation priors
+  a_sigma_alpha_prior <- ctrl$a_sigma_alpha_prior
+  b_sigma_alpha_prior <- ctrl$b_sigma_alpha_prior
+  a_sigma_tau_prior   <- ctrl$a_sigma_tau_prior
+  b_sigma_tau_prior   <- ctrl$b_sigma_tau_prior
+
+  sigma2_rho_prior <- if (!is.null(ctrl$sigma2_rho_prior))
+    as.numeric(ctrl$sigma2_rho_prior) else 10
+
+  # ---- moderator (gamma) priors
+  Sigma_gamma_prior <- ctrl$Sigma_gamma_prior
+  mu_gamma_prior <- if (is.null(ctrl$mu_gamma_prior)) {
+    rep(0, G)
+  } else {
+    mg <- as.numeric(ctrl$mu_gamma_prior)
+    if (length(mg) != G)
+      stop(sprintf("mu_gamma_prior must have length %d, got %d.", G, length(mg)),
+           call. = FALSE)
+    mg
+  }
+  Sigma_gamma_prior_inv <- if (length(Sigma_gamma_prior) == 1) {
+    diag(1 / Sigma_gamma_prior, G)
+  } else {
+    sg <- as.numeric(Sigma_gamma_prior)
+    if (length(sg) != G)
+      stop(sprintf("Sigma_gamma_prior must have length 1 or %d, got %d.",
+                   G, length(sg)), call. = FALSE)
+    diag(1 / sg, G)
+  }
+
+  # ---- first-stage probit priors
+  mu_delta_prior <- if (is.null(ctrl$mu_delta_prior)) {
+    rep(0, p_fs)
+  } else {
+    md <- as.numeric(ctrl$mu_delta_prior)
+    if (length(md) != p_fs)
+      stop(sprintf("mu_delta_prior must have length %d, got %d.", p_fs, length(md)),
+           call. = FALSE)
+    md
+  }
+  Sigma_delta_prior_inv <- if (is.null(ctrl$Sigma_delta_prior)) {
+    diag(1 / 10, p_fs)
+  } else {
+    sdp <- as.numeric(ctrl$Sigma_delta_prior)
+    if (length(sdp) == 1) diag(1 / sdp, p_fs)
+    else {
+      if (length(sdp) != p_fs)
+        stop(sprintf("Sigma_delta_prior must have length 1 or %d, got %d.",
+                     p_fs, length(sdp)), call. = FALSE)
+      diag(1 / sdp)
+    }
+  }
+
+  # ---- precompute fixed cross-products
+  XfsXfs       <- crossprod(X_fs)
+  A_delta_base <- XfsXfs + Sigma_delta_prior_inv
+
+  # ---- initial values
+  beta_bd <- matrix(0, K * J0, 1)
+  gamma   <- rep(0, G)
+  rho     <- 0
+  delta   <- if (!is.null(fs$delta0)) as.numeric(fs$delta0) else rep(0, p_fs)
+  sigma2  <- 1
+  tau     <- rep(1, K)
+
+  z_star <- ifelse(d_vec == 1, 0.5, -0.5)
+
+  # ---- storage
+  n_save         <- n_iter - burn_in
+  beta_samples   <- matrix(0, n_save, K * J0)
+  gamma_samples  <- matrix(0, n_save, G)
+  rho_samples    <- numeric(n_save)
+  delta_samples  <- matrix(0, n_save, p_fs)
+  sigma2_samples <- numeric(n_save)
+  tau_samples    <- matrix(0, n_save, K)
+
+  pb <- utils::txtProgressBar(min = 0, max = n_iter, style = 3)
+
+  for (iter in seq_len(n_iter)) {
+
+    # ==================================================================
+    # BLOCK 1: Sample z*_i  (Albert-Chib)
+    # ==================================================================
+    eta <- as.numeric(X_fs %*% delta)
+    z_star <- ifelse(
+      d_vec == 1,
+      truncnorm::rtruncnorm(n_obs, a =    0, b =  Inf, mean = eta, sd = 1),
+      truncnorm::rtruncnorm(n_obs, a = -Inf, b =    0, mean = eta, sd = 1)
+    )
+
+    # ==================================================================
+    # BLOCK 2: Sample delta | z*, X_fs
+    # ==================================================================
+    b_delta     <- as.numeric(crossprod(X_fs, z_star)) +
+      as.numeric(Sigma_delta_prior_inv %*% mu_delta_prior)
+    cA_delta    <- chol(A_delta_base)
+    A_delta_inv <- chol2inv(cA_delta)
+    mu_delta    <- as.numeric(A_delta_inv %*% b_delta)
+    delta       <- rMVNormCovariance(1, mu = mu_delta, Sigma = A_delta_inv)
+
+    # ==================================================================
+    # BLOCK 3: Build nu_hat and stack to match X_block rows
+    # ==================================================================
+    nu_hat <- z_star - as.numeric(X_fs %*% delta)
+    nu_hat_stacked <- .build_nu_hat_stacked(
+      nu_hat   = nu_hat,
+      X_idlist = gdata$X_idlist,
+      dta_id   = gdata$dtaidx[["id"]],
+      dta_wID  = gdata$dtaidx[["wID"]]
+    )
+    nu_col <- Matrix::Matrix(nu_hat_stacked, ncol = 1)
+
+    # ==================================================================
+    # BLOCK 4a: Sample beta_bd | y, rho, gamma, sigma2, tau
+    # Moderator prior mean q enters via Sigma_beta_prior_inv %*% q
+    # y_tilde = y - nu_col * rho  (partial out selection correction)
+    # ==================================================================
+    dZ     <- rep(0, K); dZ[k_tr] <- 1
+    Z_star <- Matrix::kronecker(Z, dZ)         # [K*J0 x G] selector
+
+    Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
+    q       <- Z_star %*% gamma               # moderator-implied prior mean
+
+    y_tilde <- y_block - nu_col * rho
+
+    XtW_bd  <- Matrix::t(X_block) %*% W_block
+    XtWX_bd <- XtW_bd %*% X_block
+    XtWy_bd <- XtW_bd %*% y_tilde
+
+    A_bd    <- XtWX_bd / sigma2 + Sigma_beta_prior_inv
+    b_bd    <- XtWy_bd / sigma2 + Sigma_beta_prior_inv %*% q
+
+    cA_bd    <- Matrix::chol(A_bd)
+    A_bd_inv <- Matrix::chol2inv(cA_bd)
+    mu_bd    <- A_bd_inv %*% b_bd
+    beta_bd  <- rMVNormCovariance(1, mu = as.numeric(mu_bd), Sigma = A_bd_inv)
+
+    # ==================================================================
+    # BLOCK 4b: Sample gamma | beta_bd, tau, Z
+    # Identical to gibbs_sampling_moderators gamma block
+    # ==================================================================
+    beta_matrix <- matrix(beta_bd, ncol = K, byrow = TRUE)
+    beta_tr     <- as.numeric(beta_matrix[, k_tr, drop = TRUE])
+
+    V_gamma <- solve(crossprod(Z) / tau[k_tr]^2 + Sigma_gamma_prior_inv)
+    rhs     <- as.numeric(crossprod(Z, beta_tr)) / tau[k_tr]^2 +
+      as.numeric(Sigma_gamma_prior_inv %*% mu_gamma_prior)
+    m_gamma <- V_gamma %*% rhs
+    gamma   <- rMVNormCovariance(1, mu = as.numeric(m_gamma), Sigma = V_gamma)
+
+    # ==================================================================
+    # BLOCK 4c: Sample rho (scalar) | y, beta_bd, nu_col, sigma2
+    # ==================================================================
+    y_tilde2 <- y_block - X_block %*% beta_bd
+    nuWnu    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% nu_col)
+    nuWy2    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% y_tilde2)
+    v_rho    <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
+    m_rho    <- v_rho * nuWy2 / sigma2
+    rho      <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
+
+    # ==================================================================
+    # BLOCK 5: Sample sigma2
+    # ==================================================================
+    residuals <- y_block - X_block %*% beta_bd - nu_col * rho
+    alpha_s   <- a_sigma_alpha_prior + length(y_block) / 2
+    beta_s    <- b_sigma_alpha_prior +
+      as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
+    sigma2 <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
+
+    # ==================================================================
+    # BLOCK 6: Sample tau_k | beta_bd, gamma  (moderator-adjusted residuals)
+    # ==================================================================
+    for (k in seq_len(K)) {
+      tau[k] <- sqrt(1 / stats::rgamma(
+        1,
+        shape = a_sigma_tau_prior + J0 / 2,
+        rate  = b_sigma_tau_prior +
+          sum((beta_matrix[, k] -
+                 Z_star[((1:J0) - 1) * K + k, , drop = FALSE] %*% gamma)^2) / 2
+      ))
+    }
+
+    # ---- store
+    if (iter > burn_in) {
+      s <- iter - burn_in
+      beta_samples[s, ]  <- as.numeric(beta_bd)
+      gamma_samples[s, ] <- as.numeric(gamma)
+      rho_samples[s]     <- rho
+      delta_samples[s, ] <- as.numeric(delta)
+      sigma2_samples[s]  <- sigma2
+      tau_samples[s, ]   <- tau
+    }
+
+    utils::setTxtProgressBar(pb, iter)
+  }
+
+  close(pb)
+
+  colnames(gamma_samples) <- colnames(Z)
+  colnames(delta_samples) <- colnames(X_fs)
+  colnames(tau_samples)   <- gdata$cov$Xcols
+
+  list(
+    beta_samples   = beta_samples,
+    gamma_samples  = gamma_samples,
+    rho_samples    = rho_samples,
     delta_samples  = delta_samples,
     sigma2_samples = sigma2_samples,
     tau_samples    = tau_samples

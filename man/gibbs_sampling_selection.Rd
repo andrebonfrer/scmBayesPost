@@ -18,10 +18,9 @@ The joint model is:
 \deqn{y_i = x_i^\top \beta + \rho\,\hat\nu_i + \varepsilon_i,
       \quad \varepsilon_i \sim N(0,\sigma^2)}
 
-where \eqn{\hat\nu_i = z^*_i - x_{fs,i}^\top\delta} is the selection
-structural residual. \eqn{\rho} is identified as the coefficient on
-\eqn{\hat\nu} in the augmented outcome equation and is sampled as part
-of \eqn{\beta}.
+\eqn{\rho} is a single global coefficient on \eqn{\hat\nu} and is
+sampled separately from the block-diagonal \eqn{\beta} to avoid
+dimension mismatches with the Kronecker prior structure.
 
 Invoked when \code{gdata$cov$first_stage == "selection_probit_bayes"}.
 }
