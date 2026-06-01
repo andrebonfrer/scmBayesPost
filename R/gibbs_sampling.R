@@ -638,12 +638,11 @@ gibbs_sampling_selection <- function(gdata,
     n_cores <- parallel::detectCores(logical = FALSE)
     if (RhpcBLASctl::blas_get_num_procs() < n_cores) {
       RhpcBLASctl::blas_set_num_threads(n_cores)
-      if (verbose)
         message(sprintf(
           "RhpcBLASctl: BLAS threads set to %d for matrix operations.", n_cores
         ))
     }
-  } else if (verbose) {
+  } else {
     message(paste0(
       "Install RhpcBLASctl for faster BLAS threading: ",
       "install.packages('RhpcBLASctl')"
@@ -874,12 +873,11 @@ gibbs_sampling_selection_moderators <- function(gdata,
     n_cores <- parallel::detectCores(logical = FALSE)
     if (RhpcBLASctl::blas_get_num_procs() < n_cores) {
       RhpcBLASctl::blas_set_num_threads(n_cores)
-      if (verbose)
         message(sprintf(
           "RhpcBLASctl: BLAS threads set to %d for matrix operations.", n_cores
         ))
     }
-  } else if (verbose) {
+  } else {
     message(paste0(
       "Install RhpcBLASctl for faster BLAS threading: ",
       "install.packages('RhpcBLASctl')"
