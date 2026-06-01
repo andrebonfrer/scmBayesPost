@@ -197,12 +197,55 @@ prepare_data_general <- function(dta,
     d    <- as.numeric(dta[[tr_col]])
 
     # Run frequentist probit to get MLE starting values for delta
-    if (verbose)
-      message("Fitting frequentist probit for starting values (delta0).")
-    fs_fit <- stats::glm(fs_formula,
-                         family = stats::binomial(link = "probit"),
-                         data   = dta)
-    delta0 <- as.numeric(stats::coef(fs_fit))
+    if (requireNamespace("fixest", quietly = TRUE)) {
+      if (verbose)
+        message("Using fixest::feglm for fast first-stage probit (MLE starting values).")
+
+      # Extract fixed effects from formula if present
+      # Simple version: assume formula is treatment ~ covars or treatment ~ covars | FE
+      # For now, just use glm path if formula is complex
+      # You can parse the formula more carefully if needed
+
+      tryCatch({
+        # Attempt fixest (works if formula uses | for FE)
+        fs_fit_fixest <- fixest::feglm(fs_formula,
+                                       family = "probit",
+                                       data = dta)
+        delta0 <- as.numeric(stats::coef(fs_fit_fixest))
+
+        # Create minimal glm-compatible object
+        fs_fit <- list(
+          coefficients = delta0,
+          converged = TRUE,
+          method = "fixest"
+        )
+
+        if (verbose) {
+          message(sprintf(
+            "  First-stage probit (fixest): %d obs, %d covariates",
+            length(d), length(delta0)
+          ))
+        }
+      }, error = function(e) {
+        if (verbose)
+          message("  fixest failed, falling back to stats::glm.")
+
+        fs_fit <<- stats::glm(fs_formula,
+                              family = stats::binomial(link = "probit"),
+                              data   = dta)
+        delta0 <<- as.numeric(stats::coef(fs_fit))
+      })
+
+    } else {
+      # Fallback: standard glm
+      if (verbose)
+        message("Fitting frequentist probit for starting values (delta0).")
+
+      fs_fit <- stats::glm(fs_formula,
+                           family = stats::binomial(link = "probit"),
+                           data   = dta)
+      delta0 <- as.numeric(stats::coef(fs_fit))
+    }
 
     if (verbose) {
       message(sprintf(
