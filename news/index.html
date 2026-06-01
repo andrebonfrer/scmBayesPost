@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.8</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.9</span>
       </span>
     </div>
 
@@ -42,11 +42,24 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.7" id="scmbayespost-027">scmBayesPost 0.2.7<a class="anchor" aria-label="anchor" href="#scmbayespost-027"></a></h2>
-<ul><li>Performance: Optional <code>fixest</code> support for faster first-stage probit estimation in large panels</li>
-<li>Fixed: Dependency warning with fixest coefficient extraction</li>
-<li>Documentation improvements for Bayesian selection models</li>
+<h2 class="page-header" data-toc-text="0.2.9" id="scmbayespost-029">scmBayesPost 0.2.9<a class="anchor" aria-label="anchor" href="#scmbayespost-029"></a></h2>
+<div class="section level3">
+<h3 id="performance-improvements-0-2-9">Performance improvements<a class="anchor" aria-label="anchor" href="#performance-improvements-0-2-9"></a></h3>
+<ul><li>
+<p><code><a href="../reference/gibbs_sampling_selection.html">gibbs_sampling_selection()</a></code> and <code><a href="../reference/gibbs_sampling_selection_moderators.html">gibbs_sampling_selection_moderators()</a></code> are now substantially faster when the first-stage probit is used with large datasets (tested on N = 292,199 observations):</p>
+<ul><li><p><strong>Truncated normal sampling</strong>: replaced <code><a href="https://rdrr.io/pkg/truncnorm/man/dtruncnorm.html" class="external-link">truncnorm::rtruncnorm()</a></code> with a fast inverse-CDF sampler (<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>). Treated and untreated index vectors are precomputed once before the loop, eliminating repeated <code>ifelse</code> dispatch across 290k+ observations per iteration. Approx 2-4x speedup on the z* block.</p></li>
+<li><p><strong>Outcome cross-products</strong>: <code>X_block'WX_block</code> and <code>X_block'W</code> are now precomputed once before the Gibbs loop since <code>X_block</code> is fixed across iterations. Only <code>X_block'W y_tilde</code> is recomputed per iteration. <code>Z_star</code> (the Kronecker moderator selector) is also precomputed in <code><a href="../reference/gibbs_sampling_selection_moderators.html">gibbs_sampling_selection_moderators()</a></code>.</p></li>
+<li><p><strong>nu_hat alignment</strong>: replaced the per-iteration <code>data.table</code> merge in <code><a href="../reference/dot-build_nu_hat_stacked.html">.build_nu_hat_stacked()</a></code> with a one-time integer index map (<code><a href="../reference/dot-build_nu_hat_index.html">.build_nu_hat_index()</a></code>). Inside the loop, stacking nu_hat is now a single vector lookup (<code>nu_hat[nu_row_idx]</code>) rather than a 290k-row join. Approx 10-50x speedup on that operation.</p></li>
+</ul></li>
 </ul></div>
+<div class="section level3">
+<h3 id="new-internal-functions-0-2-9">New internal functions<a class="anchor" aria-label="anchor" href="#new-internal-functions-0-2-9"></a></h3>
+<ul><li>
+<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>: fast inverse-CDF truncated normal sampler.</li>
+<li>
+<code><a href="../reference/dot-build_nu_hat_index.html">.build_nu_hat_index()</a></code>: precomputes the integer alignment map from <code>X_block</code> rows to original <code>dta</code> rows, used in place of the per-iteration <code>data.table</code> merge.</li>
+</ul></div>
+</div>
   </div>
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
