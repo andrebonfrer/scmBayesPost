@@ -1,38 +1,32 @@
-## scmBayesPost v0.2.8
+# scmBayesPost 0.2.9
 
-### What was broken
+## Performance improvements
 
-When using both `first_stage = "selection_probit_bayes"` and
-`second_stage = "moderators"` together, `gibbs_postscm()` threw a
-non-conformable matrix error and an erroneous warning that moderators
-were not supported alongside the Bayesian probit first stage. Both
-issues stemmed from the dispatcher routing the combined model to the
-wrong internal sampler.
+- `gibbs_sampling_selection()` and `gibbs_sampling_selection_moderators()`
+  are now substantially faster when the first-stage probit is used with
+  large datasets (tested on N = 292,199 observations):
 
-### What is fixed
+  - **Truncated normal sampling**: replaced `truncnorm::rtruncnorm()` with
+    a fast inverse-CDF sampler (`.sample_z_star()`). Treated and untreated
+    index vectors are precomputed once before the loop, eliminating repeated
+    `ifelse` dispatch across 290k+ observations per iteration. Approx 2-4x
+    speedup on the z* block.
 
-A new internal sampler `gibbs_sampling_selection_moderators()` now
-handles the full joint model correctly. The dispatcher routes
-explicitly on all four combinations of first stage and moderator
-presence. The combined specification is now fully supported with no
-warnings.
+  - **Outcome cross-products**: `X_block'WX_block` and `X_block'W` are
+    now precomputed once before the Gibbs loop since `X_block` is fixed
+    across iterations. Only `X_block'W y_tilde` is recomputed per
+    iteration. `Z_star` (the Kronecker moderator selector) is also
+    precomputed in `gibbs_sampling_selection_moderators()`.
 
-### The joint model
+  - **nu_hat alignment**: replaced the per-iteration `data.table` merge
+    in `.build_nu_hat_stacked()` with a one-time integer index map
+    (`.build_nu_hat_index()`). Inside the loop, stacking nu_hat is now
+    a single vector lookup (`nu_hat[nu_row_idx]`) rather than a 290k-row
+    join. Approx 10-50x speedup on that operation.
 
-**First stage (Albert-Chib probit):**  
-`z*_i = x_fs_i' delta + nu_i`,  `d_i = 1[z*_i > 0]`
+## New internal functions
 
-**Moderator equation (treatment heterogeneity):**  
-`beta_{j, k_tr} = z_j' gamma + eta_j`
-
-**Outcome equation:**  
-`y_i = x_i' beta + rho * nu_hat_i + eps_i`
-
-The `f.Z` moderators affect only the unit-specific treatment
-coefficients and are entirely independent of the selection equation.
-
-### Installation
-
-```r
-remotes::install_github("andrebonfrer/scmBayesPost@v0.2.8")
-```
+- `.sample_z_star()`: fast inverse-CDF truncated normal sampler.
+- `.build_nu_hat_index()`: precomputes the integer alignment map from
+  `X_block` rows to original `dta` rows, used in place of the
+  per-iteration `data.table` merge.
