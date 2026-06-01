@@ -17,6 +17,197 @@
 
 
 # -----------------------------------------------------------------------------
+#' Sample beta block-diagonally (fast path for large J0)
+#'
+#' When X_block is block-diagonal with J0 blocks of size \[T_j x K\] and the
+#' prior precision is block-diagonal diag(J0) x diag(1/tau), the posterior
+#' precision A_bd = XtWX_bd/sigma2 + Sigma_beta_prior_inv is also block-
+#' diagonal. Factorising each \[K x K\] block independently reduces cost from
+#' O((K*J0)^3) to O(J0 * K^3). For K=1 each block is a scalar — the Cholesky
+#' collapses to a square root and the MVN draw to a single normal draw.
+#'
+#' @param XtWX_blocks List of J0 matrices, each \[K x K\]: the j-th block of
+#'   X_block'W X_block.
+#' @param XtWy_blocks List of J0 vectors, each length K: the j-th block of
+#'   X_block'W y_tilde.
+#' @param tau         Numeric vector length K: current dispersion SDs.
+#' @param sigma2      Scalar: current observation noise variance.
+#' @param K           Integer: covariates per unit.
+#' @param prior_mean  Optional list of J0 vectors (prior mean per unit block).
+#'   Default NULL gives zero prior mean.
+#'
+#' @return Numeric vector of length K*J0: sampled beta in stacked unit order.
+#' @keywords internal
+.sample_beta_bd_blockdiag <- function(XtWX_blocks,
+                                      XtWy_blocks,
+                                      tau,
+                                      sigma2,
+                                      K,
+                                      prior_mean = NULL) {
+
+  J0          <- length(XtWX_blocks)
+  tau_inv     <- 1 / tau^2          # precision (1/tau^2 not 1/tau)
+  beta_out    <- numeric(K * J0)
+
+  for (j in seq_len(J0)) {
+    XtWX_j <- XtWX_blocks[[j]]     # [K x K]
+    XtWy_j <- XtWy_blocks[[j]]     # [K]
+    pm_j   <- if (is.null(prior_mean)) rep(0, K) else prior_mean[[j]]
+
+    # Posterior precision: A_j = XtWX_j/sigma2 + diag(tau_inv)
+    A_j <- XtWX_j / sigma2 + diag(tau_inv, K)
+
+    if (K == 1L) {
+      # Scalar fast path: avoid Cholesky entirely
+      v_j   <- 1 / as.numeric(A_j)
+      m_j   <- v_j * (as.numeric(XtWy_j) / sigma2 +
+                        tau_inv * pm_j)
+      beta_out[j] <- stats::rnorm(1, mean = m_j, sd = sqrt(v_j))
+    } else {
+      # General K > 1: Cholesky of [K x K] block
+      b_j   <- XtWy_j / sigma2 + tau_inv * pm_j
+      cA_j  <- chol(A_j)
+      Ai_j  <- chol2inv(cA_j)
+      mu_j  <- as.numeric(Ai_j %*% b_j)
+      # Draw from N(mu_j, Ai_j) via Cholesky backsolve
+      z     <- stats::rnorm(K)
+      beta_out[((j - 1L) * K + 1L):(j * K)] <-
+        mu_j + as.numeric(backsolve(cA_j, z))
+    }
+  }
+
+  beta_out
+}
+
+
+# -----------------------------------------------------------------------------
+#' Precompute per-unit XtWX and XtWy blocks from block-diagonal X_block
+#'
+#' Extracts the J0 diagonal blocks of X_block'W X_block and X_block'W y,
+#' each of size \[K x K\] and \[K x 1\] respectively. Called once before the
+#' Gibbs loop; XtWy_blocks is recomputed per iteration (since y_tilde
+#' changes) but XtWX_blocks is fixed.
+#'
+#' @param X_block sparse \[N_stacked x K*J0\] block-diagonal Matrix.
+#' @param W_block sparse diagonal \[N_stacked x N_stacked\] weight Matrix.
+#' @param K       Integer. Covariates per unit.
+#' @param J0      Integer. Number of treated units.
+#'
+#' @return List with elements \code{XtWX_blocks} and \code{row_ranges},
+#'   where \code{row_ranges[[j]]} gives the row indices of block j in
+#'   X_block (needed to extract XtWy_blocks per iteration).
+#' @keywords internal
+.precompute_XtWX_blocks <- function(X_block, W_block, K, J0) {
+
+  # X_block column ranges: block j occupies cols (j-1)*K+1 : j*K
+  XtWX_blocks <- vector("list", J0)
+
+  # For block-diagonal X_block, block j's rows are those where only
+  # columns (j-1)*K+1:j*K are non-zero. We infer row ranges from the
+  # structure: each unit block has the same number of rows T_j.
+  # Total rows N = sum(T_j); if balanced T_j = N/J0.
+  N_stacked <- nrow(X_block)
+
+  # Extract column ranges and corresponding row blocks
+  # For a proper block-diagonal matrix, column block j is non-zero only
+  # in row block j. We use Matrix::which to find non-zero rows per col block.
+  col_starts <- (seq_len(J0) - 1L) * K + 1L
+
+  row_ranges <- vector("list", J0)
+
+  for (j in seq_len(J0)) {
+    cols_j <- col_starts[j]:(col_starts[j] + K - 1L)
+    # Non-zero rows for this column block
+    rows_j <- unique(Matrix::which(X_block[, cols_j, drop = FALSE] != 0,
+                                   arr.ind = TRUE)[, "row"])
+    rows_j <- sort(rows_j)
+    row_ranges[[j]] <- rows_j
+
+    Xj <- as.matrix(X_block[rows_j, cols_j, drop = FALSE])
+    Wj <- Matrix::diag(W_block)[rows_j]
+    XtWX_blocks[[j]] <- crossprod(Xj, Wj * Xj)   # [K x K]
+  }
+
+  list(XtWX_blocks = XtWX_blocks, row_ranges = row_ranges)
+}
+
+
+# -----------------------------------------------------------------------------
+#' Compute per-unit XtWy blocks (called each iteration)
+#'
+#' @param X_block   sparse block-diagonal design matrix.
+#' @param W_block   diagonal weight matrix.
+#' @param y_tilde   Numeric vector \[N_stacked\]: current partially-out outcome.
+#' @param row_ranges List of J0 integer vectors from .precompute_XtWX_blocks.
+#' @param K         Integer. Covariates per unit.
+#' @param J0        Integer. Number of treated units.
+#'
+#' @return List of J0 numeric vectors each of length K.
+#' @keywords internal
+.compute_XtWy_blocks <- function(X_block, W_block, y_tilde,
+                                 row_ranges, K, J0) {
+
+  col_starts    <- (seq_len(J0) - 1L) * K + 1L
+  W_diag        <- Matrix::diag(W_block)
+  y_vec         <- as.numeric(y_tilde)
+  XtWy_blocks   <- vector("list", J0)
+
+  for (j in seq_len(J0)) {
+    rows_j  <- row_ranges[[j]]
+    cols_j  <- col_starts[j]:(col_starts[j] + K - 1L)
+    Xj      <- as.matrix(X_block[rows_j, cols_j, drop = FALSE])
+    Wj      <- W_diag[rows_j]
+    XtWy_blocks[[j]] <- as.numeric(crossprod(Xj, Wj * y_vec[rows_j]))
+  }
+
+  XtWy_blocks
+}
+
+
+# -----------------------------------------------------------------------------
+#' Fast block-diagonal matrix-vector product (replaces X_block %*% beta_bd)
+#'
+#' For block-diagonal X_block and coefficient vector beta_bd, computes
+#' X_block %*% beta_bd by iterating over J0 unit blocks rather than
+#' performing the full sparse matrix-vector product. For K=1 each block
+#' reduces to a scalar multiply-and-assign, avoiding sparse matrix overhead.
+#'
+#' @param beta_bd   Numeric vector length K*J0.
+#' @param row_ranges List of J0 integer vectors: row indices per unit block.
+#' @param X_block   Sparse block-diagonal Matrix \[N_stacked x K*J0\].
+#' @param K         Integer. Covariates per unit.
+#' @param J0        Integer. Number of treated units.
+#' @param N_stacked Integer. Total rows in X_block.
+#'
+#' @return Numeric vector length N_stacked.
+#' @keywords internal
+.Xbeta_blockdiag <- function(beta_bd, row_ranges, X_block, K, J0, N_stacked) {
+  out        <- numeric(N_stacked)
+  col_starts <- (seq_len(J0) - 1L) * K + 1L
+
+  if (K == 1L) {
+    # Fast path: scalar multiply per unit block
+    for (j in seq_len(J0)) {
+      out[row_ranges[[j]]] <- beta_bd[j]   # X_j is all-ones in treated col
+      # General: multiply by X slice — for K=1 X_j %*% beta_j = beta_j * x_j
+      # but x_j is a column of X_block. Fetch it:
+      xj <- as.numeric(X_block[row_ranges[[j]], col_starts[j], drop = TRUE])
+      out[row_ranges[[j]]] <- xj * beta_bd[j]
+    }
+  } else {
+    for (j in seq_len(J0)) {
+      rows_j <- row_ranges[[j]]
+      cols_j <- col_starts[j]:(col_starts[j] + K - 1L)
+      Xj     <- as.matrix(X_block[rows_j, cols_j, drop = FALSE])
+      bj     <- beta_bd[cols_j]
+      out[rows_j] <- as.numeric(Xj %*% bj)
+    }
+  }
+  out
+}
+
+
+# -----------------------------------------------------------------------------
 #' Resolve sampler control parameters
 #'
 #' Internal helper that merges user-supplied sampler controls with defaults.
@@ -87,7 +278,11 @@ resolve_sampler_control <- function(control = NULL, has_Z = FALSE) {
 #'     \item{\code{Sigma_delta_prior}}{Prior variance for \eqn{\delta}.
 #'       Scalar or vector of length \code{ncol(X_fs)}. Default 10.}
 #'   }
-#'
+#' @section Performance:
+#' For large datasets with many treated units, install \pkg{RhpcBLASctl}
+#' to enable multi-threaded BLAS operations:
+#' \code{install.packages("RhpcBLASctl")}. The package will use it
+#' automatically if available.
 #' @return A list of posterior draws.
 #' @export
 gibbs_postscm <- function(gdata,
@@ -438,6 +633,23 @@ gibbs_sampling_selection <- function(gdata,
   K  <- length(gdata$cov$Xcols)
   J0 <- gdata$cov$J0
 
+  # performance package
+  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+    n_cores <- parallel::detectCores(logical = FALSE)
+    if (RhpcBLASctl::blas_get_num_procs() < n_cores) {
+      RhpcBLASctl::blas_set_num_threads(n_cores)
+      if (verbose)
+        message(sprintf(
+          "RhpcBLASctl: BLAS threads set to %d for matrix operations.", n_cores
+        ))
+    }
+  } else if (verbose) {
+    message(paste0(
+      "Install RhpcBLASctl for faster BLAS threading: ",
+      "install.packages('RhpcBLASctl')"
+    ))
+  }
+
   fs    <- gdata$first_stage
   X_fs  <- fs$X_fs
   d_vec <- as.numeric(fs$d)
@@ -478,27 +690,44 @@ gibbs_sampling_selection <- function(gdata,
     }
   }
 
-  # --- FIX 1: precompute first-stage cross-products (unchanged across iters)
+  # precompute first-stage cross-products
   XfsXfs       <- crossprod(X_fs)
   A_delta_base <- XfsXfs + Sigma_delta_prior_inv
 
-  # --- FIX 2: precompute outcome cross-products (X_block never changes)
-  XtW_bd  <- Matrix::t(X_block) %*% W_block
-  XtWX_bd <- XtW_bd %*% X_block
-
-  # --- FIX 3: precompute nu_hat alignment index once (replaces per-iter merge)
+  # precompute nu_hat alignment index (replaces per-iter data.table merge)
   nu_row_idx <- .build_nu_hat_index(
     X_idlist = gdata$X_idlist,
     dta_id   = gdata$dtaidx[["id"]],
     dta_wID  = gdata$dtaidx[["wID"]]
   )
 
-  # --- FIX 1b: precompute treated/control split for fast z* sampling
+  # precompute treated/control split for fast z* sampling
   treat_idx <- which(d_vec == 1L)
   ctrl_idx  <- which(d_vec == 0L)
 
+  # BLOCK-DIAGONAL OPTIMISATION: precompute XtWX per-unit blocks once.
+  # A_bd = XtWX_bd/sigma2 + diag(J0) x diag(1/tau) is block-diagonal.
+  # Factorising J0 blocks of [K x K] costs O(J0 * K^3) vs O((K*J0)^3)
+  # for the full matrix — a J0^2 = 1879^2 ~ 3.5M fold improvement.
+  bd_pre     <- .precompute_XtWX_blocks(X_block, W_block, K, J0)
+  XtWX_blocks <- bd_pre$XtWX_blocks
+  row_ranges  <- bd_pre$row_ranges
+
+  # precompute W_diag, N_stacked, and X column slices for fast Xbeta
+  W_diag    <- Matrix::diag(W_block)
+  N_stacked <- nrow(X_block)
+
+  # For K=1: cache the single column slice per unit (avoids per-iter sparse extract)
+  if (K == 1L) {
+    X_cols_cache <- lapply(seq_len(J0), function(j)
+      as.numeric(X_block[row_ranges[[j]], j, drop = TRUE])
+    )
+  } else {
+    X_cols_cache <- NULL
+  }
+
   # ---- initial values
-  beta_bd <- matrix(0, K * J0, 1)
+  beta_bd <- numeric(K * J0)
   rho     <- 0
   delta   <- if (!is.null(fs$delta0)) as.numeric(fs$delta0) else rep(0, p_fs)
   sigma2  <- 1
@@ -516,7 +745,7 @@ gibbs_sampling_selection <- function(gdata,
 
   for (iter in seq_len(n_iter)) {
 
-    # BLOCK 1: Sample z*  (FIX 1b: fast inverse-CDF sampler, no ifelse dispatch)
+    # BLOCK 1: Sample z*  (fast inverse-CDF, no ifelse dispatch)
     eta    <- as.numeric(X_fs %*% delta)
     z_star <- .sample_z_star(eta, d_vec, treat_idx, ctrl_idx)
 
@@ -528,37 +757,38 @@ gibbs_sampling_selection <- function(gdata,
     mu_delta    <- as.numeric(A_delta_inv %*% b_delta)
     delta       <- rMVNormCovariance(1, mu = mu_delta, Sigma = A_delta_inv)
 
-    # BLOCK 3: Build nu_hat  (FIX 3: integer index lookup, no merge)
+    # BLOCK 3: Build nu_hat (integer index lookup, no merge)
     nu_hat         <- z_star - as.numeric(X_fs %*% delta)
     nu_hat_stacked <- nu_hat[nu_row_idx]
-    nu_col         <- Matrix::Matrix(nu_hat_stacked, ncol = 1)
 
-    # BLOCK 4a: Sample beta_bd | y, rho, sigma2, tau
-    # (FIX 2: XtW_bd and XtWX_bd precomputed; only XtWy recomputed per iter)
-    y_tilde <- y_block - nu_col * rho
-    Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
-    XtWy_bd <- XtW_bd %*% y_tilde
-    A_bd    <- XtWX_bd / sigma2 + Sigma_beta_prior_inv
-    b_bd    <- XtWy_bd / sigma2
-    cA_bd    <- Matrix::chol(A_bd)
-    A_bd_inv <- Matrix::chol2inv(cA_bd)
-    mu_bd    <- A_bd_inv %*% b_bd
-    beta_bd  <- rMVNormCovariance(1, mu = as.numeric(mu_bd), Sigma = A_bd_inv)
+    # BLOCK 4a: Sample beta_bd block-diagonally (KEY optimisation)
+    # y_tilde = y - rho * nu_hat_stacked (partial out selection correction)
+    y_tilde_vec <- as.numeric(y_block) - rho * nu_hat_stacked
+    XtWy_blocks <- .compute_XtWy_blocks(X_block, W_block, y_tilde_vec,
+                                        row_ranges, K, J0)
+    beta_bd <- .sample_beta_bd_blockdiag(XtWX_blocks, XtWy_blocks,
+                                         tau, sigma2, K)
 
     # BLOCK 4b: Sample rho (scalar)
-    y_tilde2 <- y_block - X_block %*% beta_bd
-    nuWnu    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% nu_col)
-    nuWy2    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% y_tilde2)
-    v_rho    <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
-    m_rho    <- v_rho * nuWy2 / sigma2
-    rho      <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
+    # y_tilde2 = y - X_block %*% beta_bd (fast block-diagonal product)
+    if (K == 1L) {
+      Xb <- numeric(N_stacked)
+      for (j in seq_len(J0)) Xb[row_ranges[[j]]] <- X_cols_cache[[j]] * beta_bd[j]
+    } else {
+      Xb <- .Xbeta_blockdiag(beta_bd, row_ranges, X_block, K, J0, N_stacked)
+    }
+    y_tilde2_vec <- as.numeric(y_block) - Xb
+    nuWnu <- sum(W_diag * nu_hat_stacked^2)
+    nuWy2 <- sum(W_diag * nu_hat_stacked * y_tilde2_vec)
+    v_rho <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
+    m_rho <- v_rho * nuWy2 / sigma2
+    rho   <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
 
     # BLOCK 5: Sample sigma2
-    residuals <- y_block - X_block %*% beta_bd - nu_col * rho
-    alpha_s   <- a_sigma_alpha_prior + length(y_block) / 2
-    beta_s    <- b_sigma_alpha_prior +
-      as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
-    sigma2    <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
+    res_vec <- y_tilde2_vec - rho * nu_hat_stacked
+    alpha_s <- a_sigma_alpha_prior + length(y_block) / 2
+    beta_s  <- b_sigma_alpha_prior + sum(W_diag * res_vec^2) / 2
+    sigma2  <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
 
     # BLOCK 6: Sample tau_k
     beta_matrix <- matrix(beta_bd, ncol = K, byrow = TRUE)
@@ -572,7 +802,7 @@ gibbs_sampling_selection <- function(gdata,
 
     if (iter > burn_in) {
       s <- iter - burn_in
-      beta_samples[s, ]  <- as.numeric(beta_bd)
+      beta_samples[s, ]  <- beta_bd
       rho_samples[s]     <- rho
       delta_samples[s, ] <- as.numeric(delta)
       sigma2_samples[s]  <- sigma2
@@ -639,6 +869,23 @@ gibbs_sampling_selection_moderators <- function(gdata,
   if (nrow(X_fs) != n_obs)
     stop("nrow(X_fs) != length(d).", call. = FALSE)
 
+  # Performance improvement
+  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+    n_cores <- parallel::detectCores(logical = FALSE)
+    if (RhpcBLASctl::blas_get_num_procs() < n_cores) {
+      RhpcBLASctl::blas_set_num_threads(n_cores)
+      if (verbose)
+        message(sprintf(
+          "RhpcBLASctl: BLAS threads set to %d for matrix operations.", n_cores
+        ))
+    }
+  } else if (verbose) {
+    message(paste0(
+      "Install RhpcBLASctl for faster BLAS threading: ",
+      "install.packages('RhpcBLASctl')"
+    ))
+  }
+
   # ---- outcome equation priors
   a_sigma_alpha_prior <- ctrl$a_sigma_alpha_prior
   b_sigma_alpha_prior <- ctrl$b_sigma_alpha_prior
@@ -692,31 +939,51 @@ gibbs_sampling_selection_moderators <- function(gdata,
     }
   }
 
-  # --- FIX 1: precompute fixed cross-products
+  # precompute first-stage cross-products
   XfsXfs       <- crossprod(X_fs)
   A_delta_base <- XfsXfs + Sigma_delta_prior_inv
 
-  # --- FIX 2: precompute outcome cross-products (X_block fixed across iters)
-  XtW_bd  <- Matrix::t(X_block) %*% W_block
-  XtWX_bd <- XtW_bd %*% X_block
-
-  # --- FIX 3: precompute Z_star (fixed: Z and K don't change)
+  # precompute Z_star (fixed: Z and K don't change across iterations)
   dZ     <- rep(0, K); dZ[k_tr] <- 1
-  Z_star <- Matrix::kronecker(Z, dZ)   # [K*J0 x G] — computed once
+  Z_star <- Matrix::kronecker(Z, dZ)   # [K*J0 x G]
 
-  # --- FIX 3b: precompute nu_hat alignment index (replaces per-iter merge)
+  # precompute nu_hat alignment index
   nu_row_idx <- .build_nu_hat_index(
     X_idlist = gdata$X_idlist,
     dta_id   = gdata$dtaidx[["id"]],
     dta_wID  = gdata$dtaidx[["wID"]]
   )
 
-  # --- FIX 1b: precompute treated/control split for fast z* sampling
+  # precompute treated/control split for fast z* sampling
   treat_idx <- which(d_vec == 1L)
   ctrl_idx  <- which(d_vec == 0L)
 
+  # BLOCK-DIAGONAL OPTIMISATION: precompute XtWX per-unit blocks once
+  bd_pre      <- .precompute_XtWX_blocks(X_block, W_block, K, J0)
+  XtWX_blocks <- bd_pre$XtWX_blocks
+  row_ranges  <- bd_pre$row_ranges
+  W_diag      <- Matrix::diag(W_block)
+  N_stacked   <- nrow(X_block)
+
+  # Cache X column slices for fast block-diagonal Xbeta (K=1 fast path)
+  if (K == 1L) {
+    X_cols_cache <- lapply(seq_len(J0), function(j)
+      as.numeric(X_block[row_ranges[[j]], j, drop = TRUE])
+    )
+  } else {
+    X_cols_cache <- NULL
+  }
+
+  # Precompute per-unit gamma prior mean contribution from Z_star.
+  # Z_star %*% gamma gives the moderator-implied prior mean for all K*J0
+  # coefficients. For the block-diagonal sampler we need it split per unit.
+  # col_starts_j gives which row of Z_star is the treatment row for unit j.
+  # Since k_tr is the treatment covariate index within each K-block:
+  # Z_star row for unit j, covariate k_tr is (j-1)*K + k_tr
+  tr_rows <- (seq_len(J0) - 1L) * K + k_tr   # length J0
+
   # ---- initial values
-  beta_bd <- matrix(0, K * J0, 1)
+  beta_bd <- numeric(K * J0)
   gamma   <- rep(0, G)
   rho     <- 0
   delta   <- if (!is.null(fs$delta0)) as.numeric(fs$delta0) else rep(0, p_fs)
@@ -736,7 +1003,7 @@ gibbs_sampling_selection_moderators <- function(gdata,
 
   for (iter in seq_len(n_iter)) {
 
-    # BLOCK 1: Sample z*  (FIX 1b: fast inverse-CDF, no ifelse dispatch)
+    # BLOCK 1: Sample z*  (fast inverse-CDF)
     eta    <- as.numeric(X_fs %*% delta)
     z_star <- .sample_z_star(eta, d_vec, treat_idx, ctrl_idx)
 
@@ -748,73 +1015,72 @@ gibbs_sampling_selection_moderators <- function(gdata,
     mu_delta    <- as.numeric(A_delta_inv %*% b_delta)
     delta       <- rMVNormCovariance(1, mu = mu_delta, Sigma = A_delta_inv)
 
-    # BLOCK 3: Build nu_hat  (FIX 3b: integer index lookup, no merge)
+    # BLOCK 3: Build nu_hat (integer index lookup)
     nu_hat         <- z_star - as.numeric(X_fs %*% delta)
     nu_hat_stacked <- nu_hat[nu_row_idx]
-    nu_col         <- Matrix::Matrix(nu_hat_stacked, ncol = 1)
 
-    # BLOCK 4a: Sample beta_bd | y, rho, gamma, sigma2, tau
-    # (FIX 2: XtW_bd and XtWX_bd precomputed; FIX 3: Z_star precomputed)
-    Sigma_beta_prior_inv <- Matrix::kronecker(diag(J0), diag(1 / tau))
-    q       <- Z_star %*% gamma
-    y_tilde <- y_block - nu_col * rho
-    XtWy_bd <- XtW_bd %*% y_tilde
-    A_bd    <- XtWX_bd / sigma2 + Sigma_beta_prior_inv
-    b_bd    <- XtWy_bd / sigma2 + Sigma_beta_prior_inv %*% q
-    cA_bd    <- Matrix::chol(A_bd)
-    A_bd_inv <- Matrix::chol2inv(cA_bd)
-    mu_bd    <- A_bd_inv %*% b_bd
-    beta_bd  <- rMVNormCovariance(1, mu = as.numeric(mu_bd), Sigma = A_bd_inv)
+    # BLOCK 4a: Sample beta_bd block-diagonally with moderator prior mean
+    # Prior mean for unit j: zero except at treatment covariate k_tr where
+    # it equals z_j' gamma (the moderator-implied shrinkage target).
+    gamma_prior_means <- vector("list", J0)
+    z_gamma <- as.numeric(Z %*% gamma)   # [J0] moderator contributions
+    for (j in seq_len(J0)) {
+      pm_j <- rep(0, K)
+      pm_j[k_tr] <- z_gamma[j]
+      gamma_prior_means[[j]] <- pm_j
+    }
+
+    y_tilde_vec <- as.numeric(y_block) - rho * nu_hat_stacked
+    XtWy_blocks <- .compute_XtWy_blocks(X_block, W_block, y_tilde_vec,
+                                        row_ranges, K, J0)
+    beta_bd <- .sample_beta_bd_blockdiag(XtWX_blocks, XtWy_blocks,
+                                         tau, sigma2, K,
+                                         prior_mean = gamma_prior_means)
 
     # ==================================================================
     # BLOCK 4b: Sample gamma | beta_bd, tau, Z
-    # Identical to gibbs_sampling_moderators gamma block
-    # ==================================================================
     beta_matrix <- matrix(beta_bd, ncol = K, byrow = TRUE)
     beta_tr     <- as.numeric(beta_matrix[, k_tr, drop = TRUE])
-
     V_gamma <- solve(crossprod(Z) / tau[k_tr]^2 + Sigma_gamma_prior_inv)
     rhs     <- as.numeric(crossprod(Z, beta_tr)) / tau[k_tr]^2 +
       as.numeric(Sigma_gamma_prior_inv %*% mu_gamma_prior)
     m_gamma <- V_gamma %*% rhs
     gamma   <- rMVNormCovariance(1, mu = as.numeric(m_gamma), Sigma = V_gamma)
 
-    # ==================================================================
-    # BLOCK 4c: Sample rho (scalar) | y, beta_bd, nu_col, sigma2
-    # ==================================================================
-    y_tilde2 <- y_block - X_block %*% beta_bd
-    nuWnu    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% nu_col)
-    nuWy2    <- as.numeric(Matrix::t(nu_col) %*% W_block %*% y_tilde2)
-    v_rho    <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
-    m_rho    <- v_rho * nuWy2 / sigma2
-    rho      <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
+    # BLOCK 4c: Sample rho (scalar) — fast block-diagonal product
+    if (K == 1L) {
+      Xb <- numeric(N_stacked)
+      for (j in seq_len(J0)) Xb[row_ranges[[j]]] <- X_cols_cache[[j]] * beta_bd[j]
+    } else {
+      Xb <- .Xbeta_blockdiag(beta_bd, row_ranges, X_block, K, J0, N_stacked)
+    }
+    y_tilde2_vec <- as.numeric(y_block) - Xb
+    nuWnu <- sum(W_diag * nu_hat_stacked^2)
+    nuWy2 <- sum(W_diag * nu_hat_stacked * y_tilde2_vec)
+    v_rho <- 1 / (nuWnu / sigma2 + 1 / sigma2_rho_prior)
+    m_rho <- v_rho * nuWy2 / sigma2
+    rho   <- stats::rnorm(1, mean = m_rho, sd = sqrt(v_rho))
 
-    # ==================================================================
-    # BLOCK 5: Sample sigma2
-    # ==================================================================
-    residuals <- y_block - X_block %*% beta_bd - nu_col * rho
-    alpha_s   <- a_sigma_alpha_prior + length(y_block) / 2
-    beta_s    <- b_sigma_alpha_prior +
-      as.numeric(Matrix::t(residuals) %*% W_block %*% residuals) / 2
-    sigma2 <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
+    # BLOCK 5: Sample sigma2 — use vector ops
+    res_vec <- y_tilde2_vec - rho * nu_hat_stacked
+    alpha_s <- a_sigma_alpha_prior + length(y_block) / 2
+    beta_s  <- b_sigma_alpha_prior + sum(W_diag * res_vec^2) / 2
+    sigma2  <- 1 / stats::rgamma(1, shape = alpha_s, rate = beta_s)
 
-    # ==================================================================
-    # BLOCK 6: Sample tau_k | beta_bd, gamma  (moderator-adjusted residuals)
-    # ==================================================================
+    # BLOCK 6: Sample tau_k | beta_bd, gamma (moderator-adjusted residuals)
     for (k in seq_len(K)) {
       tau[k] <- sqrt(1 / stats::rgamma(
         1,
         shape = a_sigma_tau_prior + J0 / 2,
         rate  = b_sigma_tau_prior +
           sum((beta_matrix[, k] -
-                 Z_star[((1:J0) - 1) * K + k, , drop = FALSE] %*% gamma)^2) / 2
+                 Z_star[((1:J0) - 1L) * K + k, , drop = FALSE] %*% gamma)^2) / 2
       ))
     }
 
-    # ---- store
     if (iter > burn_in) {
       s <- iter - burn_in
-      beta_samples[s, ]  <- as.numeric(beta_bd)
+      beta_samples[s, ]  <- beta_bd
       gamma_samples[s, ] <- as.numeric(gamma)
       rho_samples[s]     <- rho
       delta_samples[s, ] <- as.numeric(delta)

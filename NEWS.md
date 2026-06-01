@@ -1,4 +1,4 @@
-# scmBayesPost 0.2.9
+# scmBayesPost 0.3.0
 
 ## Performance improvements
 
@@ -30,3 +30,10 @@
 - `.build_nu_hat_index()`: precomputes the integer alignment map from
   `X_block` rows to original `dta` rows, used in place of the
   per-iteration `data.table` merge.
+  
+## Suggests
+
+- Added `RhpcBLASctl` to `Suggests`. When installed, BLAS threading is
+  set automatically to the number of physical cores at the start of each
+  selection sampler run, accelerating the remaining `X_fs %*% delta`
+  matrix-vector product.

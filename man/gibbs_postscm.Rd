@@ -40,3 +40,11 @@ Dispatches to the appropriate internal Gibbs sampler depending on whether
 the prepared data object includes a Bayesian probit first stage, moderators,
 and whether the model is single- or multi-outcome.
 }
+\section{Performance}{
+
+For large datasets with many treated units, install \pkg{RhpcBLASctl}
+to enable multi-threaded BLAS operations:
+\code{install.packages("RhpcBLASctl")}. The package will use it
+automatically if available.
+}
+
