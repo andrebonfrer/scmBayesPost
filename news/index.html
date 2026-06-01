@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.6</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.7</span>
       </span>
     </div>
 
@@ -42,25 +42,11 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.6" id="scmbayespost-026">scmBayesPost 0.2.6<a class="anchor" aria-label="anchor" href="#scmbayespost-026"></a></h2>
-<div class="section level3">
-<h3 id="new-features-0-2-6">New features<a class="anchor" aria-label="anchor" href="#new-features-0-2-6"></a></h3>
-<ul><li>Bayesian probit first stage (<code>first_stage = "selection_probit_bayes"</code>) via Albert-Chib augmentation in <code><a href="../reference/gibbs_sampling_selection.html">gibbs_sampling_selection()</a></code>
-</li>
-<li>
-<code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> now populates <code>gdata$first_stage</code> with <code>X_fs</code>, <code>d</code>, and MLE starting values when <code>first_stage = "selection_probit_bayes"</code>
-</li>
+<h2 class="page-header" data-toc-text="0.2.7" id="scmbayespost-027">scmBayesPost 0.2.7<a class="anchor" aria-label="anchor" href="#scmbayespost-027"></a></h2>
+<ul><li>Performance: Optional <code>fixest</code> support for faster first-stage probit estimation in large panels</li>
+<li>Fixed: Dependency warning with fixest coefficient extraction</li>
+<li>Documentation improvements for Bayesian selection models</li>
 </ul></div>
-<div class="section level3">
-<h3 id="bug-fixes-0-2-6">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-2-6"></a></h3>
-<ul><li>Fixed broken <code>@return</code> Rd link in <code>BalanceDiagnostics.R</code>
-</li>
-<li>
-<code><a href="../reference/resolve_sampler_control.html">resolve_sampler_control()</a></code> now accepts <code>mu_delta_prior</code> and <code>Sigma_delta_prior</code>
-</li>
-<li>Progress bar now closed properly after Gibbs iterations</li>
-</ul></div>
-</div>
   </div>
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
