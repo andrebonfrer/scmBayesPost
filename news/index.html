@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.1</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -42,27 +42,44 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.3.0" id="scmbayespost-030">scmBayesPost 0.3.0<a class="anchor" aria-label="anchor" href="#scmbayespost-030"></a></h2>
+<h2 class="page-header" data-toc-text="0.4.0" id="scmbayespost-040">scmBayesPost 0.4.0<a class="anchor" aria-label="anchor" href="#scmbayespost-040"></a></h2>
 <div class="section level3">
-<h3 id="performance-improvements-0-3-0">Performance improvements<a class="anchor" aria-label="anchor" href="#performance-improvements-0-3-0"></a></h3>
+<h3 id="breaking-changes-0-4-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-4-0"></a></h3>
 <ul><li>
-<p><code><a href="../reference/gibbs_sampling_selection.html">gibbs_sampling_selection()</a></code> and <code><a href="../reference/gibbs_sampling_selection_moderators.html">gibbs_sampling_selection_moderators()</a></code> are now substantially faster when the first-stage probit is used with large datasets (tested on N = 292,199 observations):</p>
-<ul><li><p><strong>Truncated normal sampling</strong>: replaced <code><a href="https://rdrr.io/pkg/truncnorm/man/dtruncnorm.html" class="external-link">truncnorm::rtruncnorm()</a></code> with a fast inverse-CDF sampler (<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>). Treated and untreated index vectors are precomputed once before the loop, eliminating repeated <code>ifelse</code> dispatch across 290k+ observations per iteration. Approx 2-4x speedup on the z* block.</p></li>
-<li><p><strong>Outcome cross-products</strong>: <code>X_block'WX_block</code> and <code>X_block'W</code> are now precomputed once before the Gibbs loop since <code>X_block</code> is fixed across iterations. Only <code>X_block'W y_tilde</code> is recomputed per iteration. <code>Z_star</code> (the Kronecker moderator selector) is also precomputed in <code><a href="../reference/gibbs_sampling_selection_moderators.html">gibbs_sampling_selection_moderators()</a></code>.</p></li>
-<li><p><strong>nu_hat alignment</strong>: replaced the per-iteration <code>data.table</code> merge in <code><a href="../reference/dot-build_nu_hat_stacked.html">.build_nu_hat_stacked()</a></code> with a one-time integer index map (<code><a href="../reference/dot-build_nu_hat_index.html">.build_nu_hat_index()</a></code>). Inside the loop, stacking nu_hat is now a single vector lookup (<code>nu_hat[nu_row_idx]</code>) rather than a 290k-row join. Approx 10-50x speedup on that operation.</p></li>
-</ul></li>
+<code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> no longer returns <code>X_block</code>, <code>Y_block</code>, or <code>W</code> (the stacked block-diagonal matrices). These have been replaced by <code>X_list</code>, <code>y_list</code>, <code>w_list</code>, and <code>row_idx_list</code> — lists of J0 unit-level matrices and vectors. Code that accesses <code>gdata$X_block</code> directly will need to be updated.</li>
 </ul></div>
 <div class="section level3">
-<h3 id="new-internal-functions-0-3-0">New internal functions<a class="anchor" aria-label="anchor" href="#new-internal-functions-0-3-0"></a></h3>
+<h3 id="major-architectural-change--list-based-samplers-0-4-0">Major architectural change — list-based samplers<a class="anchor" aria-label="anchor" href="#major-architectural-change--list-based-samplers-0-4-0"></a></h3>
+<p>All Gibbs samplers have been rewritten to operate on unit-level lists directly, without ever constructing the stacked block-diagonal design matrix <code>X_block</code>. On the motivating dataset (J0 = 1,879 treated units, N_obs = 292,199 observations) the stacked matrix had 157 million rows, making every <code>%*%</code> operation inside the Gibbs loop the dominant cost.</p>
+<p>The new implementation eliminates:</p>
 <ul><li>
-<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>: fast inverse-CDF truncated normal sampler.</li>
+<code><a href="https://rdrr.io/pkg/Matrix/man/bdiag.html" class="external-link">Matrix::bdiag()</a></code> call in <code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> — the 157M-row sparse matrix is never built</li>
 <li>
-<code><a href="../reference/dot-build_nu_hat_index.html">.build_nu_hat_index()</a></code>: precomputes the integer alignment map from <code>X_block</code> rows to original <code>dta</code> rows, used in place of the per-iteration <code>data.table</code> merge.</li>
+<code>Matrix::t(X_block)</code> inside the Gibbs loop</li>
+<li>
+<code>X_block %*% beta_bd</code> over 157M rows — replaced by J0 scalar multiplies (K=1 case)</li>
+<li>
+<code>t(nu_col) %*% W_block %*% nu_col</code> — replaced by unit-level <code>sum(wj * nuj^2)</code>
+</li>
+<li>All sparse matrix construction and manipulation inside the loop</li>
 </ul></div>
 <div class="section level3">
-<h3 id="suggests-0-3-0">Suggests<a class="anchor" aria-label="anchor" href="#suggests-0-3-0"></a></h3>
-<ul><li>Added <code>RhpcBLASctl</code> to <code>Suggests</code>. When installed, BLAS threading is set automatically to the number of physical cores at the start of each selection sampler run, accelerating the remaining <code>X_fs %*% delta</code> matrix-vector product.</li>
+<h3 id="new-internal-helpers-0-4-0">New internal helpers<a class="anchor" aria-label="anchor" href="#new-internal-helpers-0-4-0"></a></h3>
+<ul><li>
+<code><a href="../reference/dot-precompute_unit_stats.html">.precompute_unit_stats()</a></code> — computes XtWX and XtWy per unit once before the loop. For K=1 these are scalars.</li>
+<li>
+<code><a href="../reference/dot-compute_XtWy_units.html">.compute_XtWy_units()</a></code> — recomputes XtWy per unit when y_tilde changes each iteration.</li>
+<li>
+<code><a href="../reference/dot-sample_beta_units.html">.sample_beta_units()</a></code> — for K=1: scalar arithmetic only (one division, one rnorm per unit). For K&gt;1: Cholesky of [K x K] per unit.</li>
+<li>
+<code><a href="../reference/dot-compute_wss.html">.compute_wss()</a></code> — weighted sum of squared residuals, unit by unit.</li>
+<li>
+<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code> — fast inverse-CDF truncated normal sampler.</li>
 </ul></div>
+<div class="section level3">
+<h3 id="api-unchanged-0-4-0">API unchanged<a class="anchor" aria-label="anchor" href="#api-unchanged-0-4-0"></a></h3>
+<p><code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> and <code><a href="../reference/gibbs_postscm.html">gibbs_postscm()</a></code> function signatures and the Gibbs fit output structure are unchanged. Only the intermediate <code>gdata</code> object structure changes.</p>
+</div>
 </div>
   </div>
 
