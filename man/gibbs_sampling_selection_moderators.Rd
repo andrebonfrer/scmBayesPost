@@ -2,8 +2,7 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampling_selection_moderators}
 \alias{gibbs_sampling_selection_moderators}
-\title{Gibbs sampler for post-SCM model with Bayesian probit first stage
-AND second-stage moderators}
+\title{Gibbs sampler — Bayesian probit first stage + second-stage moderators}
 \usage{
 gibbs_sampling_selection_moderators(
   gdata,
@@ -13,9 +12,6 @@ gibbs_sampling_selection_moderators(
 )
 }
 \description{
-Combines Albert-Chib (1993) latent utility augmentation for the selection
-first stage with the hierarchical moderator equation for treatment effect
-heterogeneity. rho (selection correction) is sampled as a scalar separate
-from the block-diagonal beta, avoiding Kronecker dimension mismatches.
+Gibbs sampler — Bayesian probit first stage + second-stage moderators
 }
 \keyword{internal}

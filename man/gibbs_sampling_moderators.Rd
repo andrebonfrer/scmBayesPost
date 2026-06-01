@@ -2,12 +2,11 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampling_moderators}
 \alias{gibbs_sampling_moderators}
-\title{Gibbs sampler for single-outcome post-SCM model with moderators}
+\title{Gibbs sampler — second-stage moderators, no first stage}
 \usage{
 gibbs_sampling_moderators(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \description{
-Internal sampler for the generalized scmBayesPost object when a second-stage
-moderator equation is present, but no IV and no selection equation are used.
+Gibbs sampler — second-stage moderators, no first stage
 }
 \keyword{internal}

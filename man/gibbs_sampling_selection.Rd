@@ -2,26 +2,11 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampling_selection}
 \alias{gibbs_sampling_selection}
-\title{Gibbs sampler for post-SCM model with Bayesian probit first stage}
+\title{Gibbs sampler — Bayesian probit first stage, no moderators}
 \usage{
 gibbs_sampling_selection(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \description{
-Internal sampler. Uses Albert-Chib (1993) data augmentation to sample
-the latent utilities \eqn{z^*} and first-stage probit coefficients
-\eqn{\delta} jointly with the outcome equation parameters.
-}
-\details{
-The joint model is:
-\deqn{z^*_i = x_{fs,i}^\top \delta + \nu_i, \quad \nu_i \sim N(0,1)}
-\deqn{d_i = \mathbf{1}[z^*_i > 0]}
-\deqn{y_i = x_i^\top \beta + \rho\,\hat\nu_i + \varepsilon_i,
-      \quad \varepsilon_i \sim N(0,\sigma^2)}
-
-\eqn{\rho} is a single global coefficient on \eqn{\hat\nu} and is
-sampled separately from the block-diagonal \eqn{\beta} to avoid
-dimension mismatches with the Kronecker prior structure.
-
-Invoked when \code{gdata$cov$first_stage == "selection_probit_bayes"}.
+Gibbs sampler — Bayesian probit first stage, no moderators
 }
 \keyword{internal}

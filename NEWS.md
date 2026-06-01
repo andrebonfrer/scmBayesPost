@@ -1,39 +1,45 @@
-# scmBayesPost 0.3.0
+# scmBayesPost 0.4.0
 
-## Performance improvements
+## Breaking changes
 
-- `gibbs_sampling_selection()` and `gibbs_sampling_selection_moderators()`
-  are now substantially faster when the first-stage probit is used with
-  large datasets (tested on N = 292,199 observations):
+- `prepare_data_general()` no longer returns `X_block`, `Y_block`, or
+  `W` (the stacked block-diagonal matrices). These have been replaced
+  by `X_list`, `y_list`, `w_list`, and `row_idx_list` — lists of J0
+  unit-level matrices and vectors. Code that accesses `gdata$X_block`
+  directly will need to be updated.
 
-  - **Truncated normal sampling**: replaced `truncnorm::rtruncnorm()` with
-    a fast inverse-CDF sampler (`.sample_z_star()`). Treated and untreated
-    index vectors are precomputed once before the loop, eliminating repeated
-    `ifelse` dispatch across 290k+ observations per iteration. Approx 2-4x
-    speedup on the z* block.
+## Major architectural change — list-based samplers
 
-  - **Outcome cross-products**: `X_block'WX_block` and `X_block'W` are
-    now precomputed once before the Gibbs loop since `X_block` is fixed
-    across iterations. Only `X_block'W y_tilde` is recomputed per
-    iteration. `Z_star` (the Kronecker moderator selector) is also
-    precomputed in `gibbs_sampling_selection_moderators()`.
+All Gibbs samplers have been rewritten to operate on unit-level lists
+directly, without ever constructing the stacked block-diagonal design
+matrix `X_block`. On the motivating dataset (J0 = 1,879 treated units,
+N_obs = 292,199 observations) the stacked matrix had 157 million rows,
+making every `%*%` operation inside the Gibbs loop the dominant cost.
 
-  - **nu_hat alignment**: replaced the per-iteration `data.table` merge
-    in `.build_nu_hat_stacked()` with a one-time integer index map
-    (`.build_nu_hat_index()`). Inside the loop, stacking nu_hat is now
-    a single vector lookup (`nu_hat[nu_row_idx]`) rather than a 290k-row
-    join. Approx 10-50x speedup on that operation.
+The new implementation eliminates:
 
-## New internal functions
+- `Matrix::bdiag()` call in `prepare_data_general()` — the 157M-row
+  sparse matrix is never built
+- `Matrix::t(X_block)` inside the Gibbs loop
+- `X_block %*% beta_bd` over 157M rows — replaced by J0 scalar
+  multiplies (K=1 case)
+- `t(nu_col) %*% W_block %*% nu_col` — replaced by unit-level
+  `sum(wj * nuj^2)`
+- All sparse matrix construction and manipulation inside the loop
 
-- `.sample_z_star()`: fast inverse-CDF truncated normal sampler.
-- `.build_nu_hat_index()`: precomputes the integer alignment map from
-  `X_block` rows to original `dta` rows, used in place of the
-  per-iteration `data.table` merge.
-  
-## Suggests
+## New internal helpers
 
-- Added `RhpcBLASctl` to `Suggests`. When installed, BLAS threading is
-  set automatically to the number of physical cores at the start of each
-  selection sampler run, accelerating the remaining `X_fs %*% delta`
-  matrix-vector product.
+- `.precompute_unit_stats()` — computes XtWX and XtWy per unit once
+  before the loop. For K=1 these are scalars.
+- `.compute_XtWy_units()` — recomputes XtWy per unit when y_tilde
+  changes each iteration.
+- `.sample_beta_units()` — for K=1: scalar arithmetic only (one
+  division, one rnorm per unit). For K>1: Cholesky of [K x K] per unit.
+- `.compute_wss()` — weighted sum of squared residuals, unit by unit.
+- `.sample_z_star()` — fast inverse-CDF truncated normal sampler.
+
+## API unchanged
+
+`prepare_data_general()` and `gibbs_postscm()` function signatures and
+the Gibbs fit output structure are unchanged. Only the intermediate
+`gdata` object structure changes.

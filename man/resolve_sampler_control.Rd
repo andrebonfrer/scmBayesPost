@@ -15,13 +15,8 @@ resolve_sampler_control(control = NULL, has_Z = FALSE)
 }
 \value{
 A named list of resolved control parameters.
-
-A named list of resolved control parameters.
 }
 \description{
-Internal helper that merges user-supplied sampler controls with defaults.
-Supports parameters for all sampler variants (simple, moderators, selection).
-
 Internal helper that merges user-supplied sampler controls with defaults.
 }
 \keyword{internal}

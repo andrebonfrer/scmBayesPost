@@ -197,55 +197,12 @@ prepare_data_general <- function(dta,
     d    <- as.numeric(dta[[tr_col]])
 
     # Run frequentist probit to get MLE starting values for delta
-    if (requireNamespace("fixest", quietly = TRUE)) {
-      if (verbose)
-        message("Using fixest::feglm for fast first-stage probit (MLE starting values).")
-
-      # Extract fixed effects from formula if present
-      # Simple version: assume formula is treatment ~ covars or treatment ~ covars | FE
-      # For now, just use glm path if formula is complex
-      # You can parse the formula more carefully if needed
-
-      tryCatch({
-        # Attempt fixest (works if formula uses | for FE)
-        fs_fit_fixest <- fixest::feglm(fs_formula,
-                                       family = "probit",
-                                       data = dta)
-        delta0 <- as.numeric(stats::coef(fs_fit_fixest))
-
-        # Create minimal glm-compatible object
-        fs_fit <- list(
-          coefficients = delta0,
-          converged = TRUE,
-          method = "fixest"
-        )
-
-        if (verbose) {
-          message(sprintf(
-            "  First-stage probit (fixest): %d obs, %d covariates",
-            length(d), length(delta0)
-          ))
-        }
-      }, error = function(e) {
-        if (verbose)
-          message("  fixest failed, falling back to stats::glm.")
-
-        fs_fit <<- stats::glm(fs_formula,
-                              family = stats::binomial(link = "probit"),
-                              data   = dta)
-        delta0 <<- as.numeric(stats::coef(fs_fit))
-      })
-
-    } else {
-      # Fallback: standard glm
-      if (verbose)
-        message("Fitting frequentist probit for starting values (delta0).")
-
-      fs_fit <- stats::glm(fs_formula,
-                           family = stats::binomial(link = "probit"),
-                           data   = dta)
-      delta0 <- as.numeric(stats::coef(fs_fit))
-    }
+    if (verbose)
+      message("Fitting frequentist probit for starting values (delta0).")
+    fs_fit <- stats::glm(fs_formula,
+                         family = stats::binomial(link = "probit"),
+                         data   = dta)
+    delta0 <- as.numeric(stats::coef(fs_fit))
 
     if (verbose) {
       message(sprintf(
@@ -333,12 +290,10 @@ prepare_data_general <- function(dta,
 
   X_idlist <- data.table::rbindlist(xid_chunks, use.names = TRUE, fill = TRUE)
 
-  X_block <- Matrix::bdiag(X_list)
-  y_long  <- unlist(y_list, use.names = FALSE)
-  w_long  <- unlist(w_list, use.names = FALSE)
-
-  Y_block <- Matrix::Matrix(y_long, ncol = 1)
-  W_block <- Matrix::Diagonal(x = w_long)
+  # Do NOT materialise X_block / Y_block / W_block.
+  # With J0 ~ 1879 and n_obs ~ 83k the stacked matrix has ~157M rows
+  # making every %*% operation catastrophically slow.
+  # All Gibbs samplers operate on X_list / y_list / w_list directly.
 
   # =========================================================================
   # ---- Second-stage moderators
@@ -390,9 +345,10 @@ prepare_data_general <- function(dta,
   }
 
   list(
-    Y_block        = Y_block,
-    X_block        = X_block,
-    W              = W_block,
+    X_list         = X_list,          # list of J0 matrices [n_j x K]
+    y_list         = y_list,          # list of J0 vectors  [n_j]
+    w_list         = w_list,          # list of J0 vectors  [n_j]
+    row_idx_list   = row_idx_list,    # list of J0 integer vectors (original dta rows)
     Z_block        = Z_block,
     Z.instruments  = Z_instruments,
     X_idlist       = X_idlist,

@@ -2,7 +2,7 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampler_one_draw_cov}
 \alias{gibbs_sampler_one_draw_cov}
-\title{Gibbs Sampler for Multivariate Regression with Covariance Option}
+\title{Gibbs draw for multivariate regression with covariance option}
 \usage{
 gibbs_sampler_one_draw_cov(
   y_list,
@@ -16,10 +16,11 @@ gibbs_sampler_one_draw_cov(
 
 \item{X_list}{List of predictor matrices, one per outcome.}
 
-\item{sigma_param}{For \code{"diagonal"}: list of initial \eqn{\sigma^2_j}
-values. For \code{"dense"}: initial covariance matrix \eqn{\Sigma}.}
+\item{sigma_param}{For \code{"diagonal"}: list of initial
+\eqn{\sigma^2_j} values. For \code{"dense"}: initial covariance
+matrix \eqn{\Sigma}.}
 
-\item{covariance_type}{\code{"diagonal"} or \code{"dense"}.}
+\item{covariance_type}{\code{"diagonal"} (default) or \code{"dense"}.}
 }
 \value{
 A list with elements \code{beta_samples}, \code{sigma2_samples},
@@ -29,15 +30,4 @@ A list with elements \code{beta_samples}, \code{sigma2_samples},
 Performs a single Gibbs sampling draw for a multivariate regression model.
 Each outcome has its own predictor matrix. Supports diagonal (independent)
 or dense (correlated) residual covariance structures.
-}
-\examples{
-set.seed(123)
-n <- 100
-X1 <- cbind(1, rnorm(n)); X2 <- cbind(1, rnorm(n), rnorm(n))
-y1 <- X1 \%*\% c(1, 0.5) + rnorm(n)
-y2 <- X2 \%*\% c(1, -0.3, 0.2) + rnorm(n)
-out <- gibbs_sampler_one_draw_cov(list(y1, y2), list(X1, X2),
-                                  list(1, 1), "diagonal")
-print(out$beta_samples)
-
 }

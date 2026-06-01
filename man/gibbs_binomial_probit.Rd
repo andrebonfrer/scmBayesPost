@@ -2,7 +2,7 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_binomial_probit}
 \alias{gibbs_binomial_probit}
-\title{Gibbs Sampling for a Binomial Probit Model with sigma^2}
+\title{Gibbs draw for binomial probit with sigma^2}
 \usage{
 gibbs_binomial_probit(
   X,
@@ -16,40 +16,30 @@ gibbs_binomial_probit(
 )
 }
 \arguments{
-\item{X}{Matrix of predictors \eqn{[n \times p]}.}
+\item{X}{Matrix of predictors \eqn{\lbrack n \times p \rbrack}.}
 
-\item{y}{Binary response vector \eqn{(0/1)} of length \eqn{n}.}
+\item{y}{Binary response vector (0/1) of length \eqn{n}.}
 
 \item{beta}{Current regression coefficients, length \eqn{p}.}
 
-\item{Sigma_prior}{Prior covariance matrix \eqn{[p \times p]} for \eqn{\beta}.}
+\item{Sigma_prior}{Prior covariance matrix \eqn{\lbrack p \times p \rbrack}
+for \eqn{\beta}.}
 
 \item{mu_prior}{Prior mean vector, length \eqn{p}.}
 
 \item{sigma2}{Current value of \eqn{\sigma^2}. Default 1.}
 
-\item{alpha_0}{Shape parameter of the Inv-Gamma prior on \eqn{\sigma^2}. Default 2.}
+\item{alpha_0}{Shape parameter of the Inv-Gamma prior on \eqn{\sigma^2}.
+Default 2.}
 
-\item{beta_0}{Rate parameter of the Inv-Gamma prior on \eqn{\sigma^2}. Default 2.}
+\item{beta_0}{Rate parameter of the Inv-Gamma prior on \eqn{\sigma^2}.
+Default 2.}
 }
 \value{
 A list with elements \code{beta}, \code{sigma2}, and \code{z}.
 }
 \description{
 Performs one Gibbs sampling iteration for a binomial probit model with
-latent variable augmentation (Albert & Chib 1993). Includes an update
-step for the variance parameter \eqn{\sigma^2}.
-}
-\details{
-The model is:
-\deqn{y_i = 1 \text{ if } z_i > 0, \quad z_i = X_i\beta + \varepsilon_i,
-      \quad \varepsilon_i \sim N(0,\sigma^2)}
-}
-\examples{
-set.seed(123)
-X <- matrix(rnorm(100 * 3), 100, 3)
-y <- rbinom(100, 1, 0.5)
-result <- gibbs_binomial_probit(X, y, rep(0, 3), diag(3), rep(0, 3))
-print(result$beta)
-
+latent variable augmentation (Albert and Chib 1993), including an update
+for the variance parameter \eqn{\sigma^2}.
 }

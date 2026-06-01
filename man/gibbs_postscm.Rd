@@ -2,49 +2,22 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_postscm}
 \alias{gibbs_postscm}
-\title{Gibbs sampler dispatcher for post-SCM models}
+\title{Gibbs sampler dispatcher}
 \usage{
 gibbs_postscm(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \arguments{
-\item{gdata}{Output from \code{prepare_data_general()}.}
+\item{gdata}{Output from prepare_data_general().}
 
-\item{n_iter}{Integer. Total number of Gibbs iterations.}
+\item{n_iter}{Integer. Total Gibbs iterations.}
 
-\item{burn_in}{Integer. Number of initial iterations discarded.}
+\item{burn_in}{Integer. Burn-in iterations discarded.}
 
-\item{control}{Optional list of sampler control parameters and priors.
-Supported entries:
-\describe{
-\item{\code{Sigma_gamma_prior}}{Prior variance for second-stage
-\eqn{\gamma} coefficients. Scalar or vector of length
-\code{ncol(Z_block)}.}
-\item{\code{mu_gamma_prior}}{Prior mean vector for \eqn{\gamma}.
-Defaults to zero.}
-\item{\code{a_sigma_alpha_prior}, \code{b_sigma_alpha_prior}}{
-Shape/rate for the observation-noise variance prior.}
-\item{\code{a_sigma_tau_prior}, \code{b_sigma_tau_prior}}{
-Shape/rate for the coefficient-dispersion prior.}
-\item{\code{mu_delta_prior}}{Prior mean for first-stage probit
-coefficients \eqn{\delta}. Numeric vector of length
-\code{ncol(X_fs)}. Defaults to zero.}
-\item{\code{Sigma_delta_prior}}{Prior variance for \eqn{\delta}.
-Scalar or vector of length \code{ncol(X_fs)}. Default 10.}
-}}
+\item{control}{Optional list of prior/control parameters.}
 }
 \value{
-A list of posterior draws.
+List of posterior draw matrices.
 }
 \description{
-Dispatches to the appropriate internal Gibbs sampler depending on whether
-the prepared data object includes a Bayesian probit first stage, moderators,
-and whether the model is single- or multi-outcome.
+Gibbs sampler dispatcher
 }
-\section{Performance}{
-
-For large datasets with many treated units, install \pkg{RhpcBLASctl}
-to enable multi-threaded BLAS operations:
-\code{install.packages("RhpcBLASctl")}. The package will use it
-automatically if available.
-}
-

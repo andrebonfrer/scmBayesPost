@@ -2,25 +2,11 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{.sample_z_star}
 \alias{.sample_z_star}
-\title{Fast truncated normal sampler via inverse-CDF}
+\title{Fast truncated normal sampler (inverse-CDF, no ifelse dispatch)}
 \usage{
 .sample_z_star(eta, d_vec, treat_idx, ctrl_idx)
 }
-\arguments{
-\item{eta}{Numeric vector of linear predictors (length n_obs).}
-
-\item{d_vec}{Integer/logical vector of treatment indicators (length n_obs).}
-
-\item{treat_idx}{Integer vector of indices where d_vec == 1 (precomputed).}
-
-\item{ctrl_idx}{Integer vector of indices where d_vec == 0 (precomputed).}
-}
-\value{
-Numeric vector z_star of length n_obs.
-}
 \description{
-Avoids the ifelse dispatch overhead of rtruncnorm for large vectors by
-splitting treated/untreated indices and sampling each group separately.
-Roughly 2-3x faster than truncnorm::rtruncnorm for n > 100k.
+Fast truncated normal sampler (inverse-CDF, no ifelse dispatch)
 }
 \keyword{internal}

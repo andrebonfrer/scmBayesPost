@@ -2,32 +2,25 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampler_one_draw}
 \alias{gibbs_sampler_one_draw}
-\title{Perform one iteration of the Gibbs sampler for an OLS model}
+\title{Single Gibbs draw for OLS model}
 \usage{
 gibbs_sampler_one_draw(y, X, beta, sigma2)
 }
 \arguments{
-\item{y}{Response vector \eqn{[n \times 1]}.}
+\item{y}{Response vector \eqn{\lbrack n \times 1 \rbrack}.}
 
-\item{X}{Design matrix \eqn{[n \times p]}, including intercept.}
+\item{X}{Design matrix \eqn{\lbrack n \times p \rbrack}, including intercept.}
 
 \item{beta}{Current coefficient vector, length \eqn{p}.}
 
 \item{sigma2}{Current error variance.}
 }
 \value{
-A list with elements \code{betaZ}, \code{sigmaZ2}, \code{residuals}.
+A list with elements \code{betaZ}, \code{sigmaZ2},
+and \code{residuals}.
 }
 \description{
-Samples regression coefficients \eqn{\beta} and error variance
-\eqn{\sigma^2} from their full conditionals under a flat prior on
-\eqn{\beta} and an improper Jeffreys prior on \eqn{\sigma^2}.
-}
-\examples{
-set.seed(123)
-X <- cbind(1, rnorm(100))
-y <- X \%*\% c(2, 3) + rnorm(100)
-out <- gibbs_sampler_one_draw(y, X, rep(0, 2), 1)
-print(out$betaZ)
-
+Performs one iteration of a Gibbs sampler for a simple OLS regression
+model under a flat prior on \eqn{\beta} and an improper Jeffreys prior
+on \eqn{\sigma^2}.
 }

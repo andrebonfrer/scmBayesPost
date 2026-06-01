@@ -2,12 +2,11 @@
 % Please edit documentation in R/gibbs_sampling.R
 \name{gibbs_sampling_simple}
 \alias{gibbs_sampling_simple}
-\title{Gibbs sampler for post-SCM model without moderators}
+\title{Gibbs sampler — no first stage, no moderators}
 \usage{
 gibbs_sampling_simple(gdata, n_iter = 1000, burn_in = 500, control = NULL)
 }
 \description{
-Internal sampler used when no second-stage moderators (f.Z),
-no instruments, and no selection equations are present.
+Gibbs sampler — no first stage, no moderators
 }
 \keyword{internal}
