@@ -19,7 +19,7 @@ and whether the model is single- or multi-outcome."><!-- mathjax --><script src=
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.9</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -103,6 +103,15 @@ Scalar or vector of length <code>ncol(X_fs)</code>. Default 10.</p></dd>
     <div id="value">
     <h2>Value</h2>
     <p>A list of posterior draws.</p>
+    </div>
+    <div id="performance">
+    <h2>Performance</h2>
+
+
+<p>For large datasets with many treated units, install <span class="pkg">RhpcBLASctl</span>
+to enable multi-threaded BLAS operations:
+<code>install.packages("RhpcBLASctl")</code>. The package will use it
+automatically if available.</p>
     </div>
 
   </div>

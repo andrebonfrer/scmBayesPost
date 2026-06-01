@@ -12,11 +12,15 @@
 <url><loc>/reference/compute_ess.html</loc></url>
 <url><loc>/reference/compute_rhat.html</loc></url>
 <url><loc>/reference/convergence_summary.html</loc></url>
+<url><loc>/reference/dot-Xbeta_blockdiag.html</loc></url>
 <url><loc>/reference/dot-build_nu_hat_index.html</loc></url>
 <url><loc>/reference/dot-build_nu_hat_stacked.html</loc></url>
+<url><loc>/reference/dot-compute_XtWy_blocks.html</loc></url>
 <url><loc>/reference/dot-ess_single.html</loc></url>
 <url><loc>/reference/dot-extract_draws_matrix.html</loc></url>
+<url><loc>/reference/dot-precompute_XtWX_blocks.html</loc></url>
 <url><loc>/reference/dot-rhat_single.html</loc></url>
+<url><loc>/reference/dot-sample_beta_bd_blockdiag.html</loc></url>
 <url><loc>/reference/dot-sample_z_star.html</loc></url>
 <url><loc>/reference/gibbs_binomial_probit.html</loc></url>
 <url><loc>/reference/gibbs_postscm.html</loc></url>

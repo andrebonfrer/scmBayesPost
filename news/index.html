@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.9</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -42,9 +42,9 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.9" id="scmbayespost-029">scmBayesPost 0.2.9<a class="anchor" aria-label="anchor" href="#scmbayespost-029"></a></h2>
+<h2 class="page-header" data-toc-text="0.3.0" id="scmbayespost-030">scmBayesPost 0.3.0<a class="anchor" aria-label="anchor" href="#scmbayespost-030"></a></h2>
 <div class="section level3">
-<h3 id="performance-improvements-0-2-9">Performance improvements<a class="anchor" aria-label="anchor" href="#performance-improvements-0-2-9"></a></h3>
+<h3 id="performance-improvements-0-3-0">Performance improvements<a class="anchor" aria-label="anchor" href="#performance-improvements-0-3-0"></a></h3>
 <ul><li>
 <p><code><a href="../reference/gibbs_sampling_selection.html">gibbs_sampling_selection()</a></code> and <code><a href="../reference/gibbs_sampling_selection_moderators.html">gibbs_sampling_selection_moderators()</a></code> are now substantially faster when the first-stage probit is used with large datasets (tested on N = 292,199 observations):</p>
 <ul><li><p><strong>Truncated normal sampling</strong>: replaced <code><a href="https://rdrr.io/pkg/truncnorm/man/dtruncnorm.html" class="external-link">truncnorm::rtruncnorm()</a></code> with a fast inverse-CDF sampler (<code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>). Treated and untreated index vectors are precomputed once before the loop, eliminating repeated <code>ifelse</code> dispatch across 290k+ observations per iteration. Approx 2-4x speedup on the z* block.</p></li>
@@ -53,11 +53,15 @@
 </ul></li>
 </ul></div>
 <div class="section level3">
-<h3 id="new-internal-functions-0-2-9">New internal functions<a class="anchor" aria-label="anchor" href="#new-internal-functions-0-2-9"></a></h3>
+<h3 id="new-internal-functions-0-3-0">New internal functions<a class="anchor" aria-label="anchor" href="#new-internal-functions-0-3-0"></a></h3>
 <ul><li>
 <code><a href="../reference/dot-sample_z_star.html">.sample_z_star()</a></code>: fast inverse-CDF truncated normal sampler.</li>
 <li>
 <code><a href="../reference/dot-build_nu_hat_index.html">.build_nu_hat_index()</a></code>: precomputes the integer alignment map from <code>X_block</code> rows to original <code>dta</code> rows, used in place of the per-iteration <code>data.table</code> merge.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="suggests-0-3-0">Suggests<a class="anchor" aria-label="anchor" href="#suggests-0-3-0"></a></h3>
+<ul><li>Added <code>RhpcBLASctl</code> to <code>Suggests</code>. When installed, BLAS threading is set automatically to the number of physical cores at the start of each selection sampler run, accelerating the remaining <code>X_fs %*% delta</code> matrix-vector product.</li>
 </ul></div>
 </div>
   </div>
