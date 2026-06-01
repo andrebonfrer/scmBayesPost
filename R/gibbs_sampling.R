@@ -94,38 +94,40 @@
 #' @param J0      Integer. Number of treated units.
 #'
 #' @return List with elements \code{XtWX_blocks} and \code{row_ranges},
-#'   where \code{row_ranges[[j]]} gives the row indices of block j in
+#'   where \code{row_ranges\[\[j\]\]} gives the row indices of block j in
 #'   X_block (needed to extract XtWy_blocks per iteration).
 #' @keywords internal
 .precompute_XtWX_blocks <- function(X_block, W_block, K, J0) {
 
-  # X_block column ranges: block j occupies cols (j-1)*K+1 : j*K
+  W_diag      <- Matrix::diag(W_block)
   XtWX_blocks <- vector("list", J0)
+  row_ranges  <- vector("list", J0)
 
-  # For block-diagonal X_block, block j's rows are those where only
-  # columns (j-1)*K+1:j*K are non-zero. We infer row ranges from the
-  # structure: each unit block has the same number of rows T_j.
-  # Total rows N = sum(T_j); if balanced T_j = N/J0.
-  N_stacked <- nrow(X_block)
+  # Convert to dgCMatrix for fast column-pointer access
+  # (avoids Matrix::which which scans the entire matrix per column block)
+  X_csc <- methods::as(X_block, "CsparseMatrix")
 
-  # Extract column ranges and corresponding row blocks
-  # For a proper block-diagonal matrix, column block j is non-zero only
-  # in row block j. We use Matrix::which to find non-zero rows per col block.
+  # Column pointers give the row indices of non-zeros directly
+  # X_csc@p[j+1] - X_csc@p[j] = number of non-zeros in column j
+  # X_csc@i[X_csc@p[j]+1 : X_csc@p[j+1]] + 1 = row indices (0-indexed -> 1-indexed)
+
   col_starts <- (seq_len(J0) - 1L) * K + 1L
 
-  row_ranges <- vector("list", J0)
-
   for (j in seq_len(J0)) {
+    # Column indices for this unit block (1-indexed)
     cols_j <- col_starts[j]:(col_starts[j] + K - 1L)
-    # Non-zero rows for this column block
-    rows_j <- unique(Matrix::which(X_block[, cols_j, drop = FALSE] != 0,
-                                   arr.ind = TRUE)[, "row"])
-    rows_j <- sort(rows_j)
+
+    # Get non-zero row indices from sparse column pointers (fast)
+    # For block-diagonal matrix, all K columns in a block share the same rows
+    p_start  <- X_csc@p[cols_j[1]] + 1L      # +1: 0-indexed to 1-indexed
+    p_end    <- X_csc@p[cols_j[1] + 1L]
+    rows_j   <- X_csc@i[p_start:p_end] + 1L  # +1: 0-indexed to 1-indexed
+
     row_ranges[[j]] <- rows_j
 
-    Xj <- as.matrix(X_block[rows_j, cols_j, drop = FALSE])
-    Wj <- Matrix::diag(W_block)[rows_j]
-    XtWX_blocks[[j]] <- crossprod(Xj, Wj * Xj)   # [K x K]
+    Xj    <- as.matrix(X_csc[rows_j, cols_j, drop = FALSE])
+    Wj    <- W_diag[rows_j]
+    XtWX_blocks[[j]] <- crossprod(Xj, Wj * Xj)
   }
 
   list(XtWX_blocks = XtWX_blocks, row_ranges = row_ranges)

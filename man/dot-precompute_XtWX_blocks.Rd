@@ -17,7 +17,7 @@
 }
 \value{
 List with elements \code{XtWX_blocks} and \code{row_ranges},
-where \code{row_ranges[[j]]} gives the row indices of block j in
+where \code{row_ranges\[\[j\]\]} gives the row indices of block j in
 X_block (needed to extract XtWy_blocks per iteration).
 }
 \description{
