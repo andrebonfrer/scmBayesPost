@@ -19,7 +19,7 @@ the latent utilities \(z^*\) and first-stage probit coefficients
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.7</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.8</span>
       </span>
     </div>
 
@@ -61,10 +61,9 @@ $$z^*_i = x_{fs,i}^\top \delta + \nu_i, \quad \nu_i \sim N(0,1)$$
 $$d_i = \mathbf{1}[z^*_i &gt; 0]$$
 $$y_i = x_i^\top \beta + \rho\,\hat\nu_i + \varepsilon_i,
       \quad \varepsilon_i \sim N(0,\sigma^2)$$</p>
-<p>where \(\hat\nu_i = z^*_i - x_{fs,i}^\top\delta\) is the selection
-structural residual. \(\rho\) is identified as the coefficient on
-\(\hat\nu\) in the augmented outcome equation and is sampled as part
-of \(\beta\).</p>
+<p>\(\rho\) is a single global coefficient on \(\hat\nu\) and is
+sampled separately from the block-diagonal \(\beta\) to avoid
+dimension mismatches with the Kronecker prior structure.</p>
 <p>Invoked when <code>gdata$cov$first_stage == "selection_probit_bayes"</code>.</p>
     </div>
 
