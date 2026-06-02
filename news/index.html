@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.1</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.2</span>
       </span>
     </div>
 
@@ -42,18 +42,26 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.4.1" id="scmbayespost-041">scmBayesPost 0.4.1<a class="anchor" aria-label="anchor" href="#scmbayespost-041"></a></h2>
+<h2 class="page-header" data-toc-text="0.4.2" id="scmbayespost-042">scmBayesPost 0.4.2<a class="anchor" aria-label="anchor" href="#scmbayespost-042"></a></h2>
 <div class="section level3">
-<h3 id="new-features-0-4-1">New features<a class="anchor" aria-label="anchor" href="#new-features-0-4-1"></a></h3>
+<h3 id="new-features-0-4-2">New features<a class="anchor" aria-label="anchor" href="#new-features-0-4-2"></a></h3>
 <ul><li>
-<p>Added <code>instrument_tests.R</code> with five exported functions for a priori instrument validity and strength testing, intended to be run before <code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code> and the Gibbs sampler:</p>
-<ul><li><p><code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code>: tests instrument relevance via first-stage F-statistic (or likelihood-ratio statistic for probit), partial R^2, and Cragg-Donald statistic. Flags instruments that fail the Stock-Yogo threshold of F &gt; 10.</p></li>
-<li><p><code><a href="../reference/test_instrument_exclusion.html">test_instrument_exclusion()</a></code>: pre-treatment placebo test. Regresses each outcome on the instruments using only pre-treatment observations (<code>budgetdummy == 0</code>). A significant coefficient indicates the instrument may have a direct effect on outcomes, violating the exclusion restriction.</p></li>
-<li><p><code><a href="../reference/test_instrument_balance.html">test_instrument_balance()</a></code>: stratifies units into quantile groups of the instrument and tests whether pre-treatment outcome means differ across groups via one-way ANOVA. Significant differences suggest the instrument is correlated with baseline outcome levels.</p></li>
-<li><p><code><a href="../reference/plot_first_stage.html">plot_first_stage()</a></code>: coefficient plot with confidence intervals from a <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> result, showing which instruments drive first-stage relevance.</p></li>
-<li><p><code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code>: omnibus wrapper that runs all three tests in sequence and prints a consolidated PASS/FAIL verdict. Intended as the primary pre-estimation diagnostic when using <code>first_stage = "selection_probit_bayes"</code>.</p></li>
-</ul><p>The recommended workflow is to run <code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code> on the raw panel data before calling <code><a href="../reference/prepare_data_general.html">prepare_data_general()</a></code>, and only proceed to full Bayesian estimation if the instrument passes strength, exclusion, and balance checks.</p>
-</li>
+<code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> gains a <code>fixed_effects</code> argument that switches from <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm</a></code> to <code><a href="https://lrberge.github.io/fixest/reference/feglm.html" class="external-link">fixest::feglm</a></code> when fixed effects are specified. This resolves convergence failures with large datasets (N = 292k observations) where standard <code>glm</code> is unable to handle high-dimensional fixed effects. Example usage:</li>
+</ul><div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span>  <span class="fu"><a href="../reference/test_instrument_strength.html">test_instrument_strength</a></span><span class="op">(</span></span>
+<span>    dt            <span class="op">=</span> <span class="va">bdt_horizon</span>,</span>
+<span>    treatment     <span class="op">=</span> <span class="st">"budgetdummy"</span>,</span>
+<span>    instruments   <span class="op">=</span> <span class="st">"peer_adoption_rate"</span>,</span>
+<span>    fixed_effects <span class="op">=</span> <span class="st">"event_time"</span>,</span>
+<span>    method        <span class="op">=</span> <span class="st">"probit"</span></span>
+<span>  <span class="op">)</span></span></code></pre></div>
+<p>When <code>fixed_effects</code> is <code>NULL</code> (default), behaviour is unchanged and <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm</a></code> is used as before.</p>
+<ul><li>
+<code>fixest</code> added to <code>Suggests</code>. It is only required when <code>fixed_effects</code> is non-NULL in <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code>. A clear error is raised if <code>fixest</code> is not installed and fixed effects are requested.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="notes-0-4-2">Notes<a class="anchor" aria-label="anchor" href="#notes-0-4-2"></a></h3>
+<ul><li>Unit (<code>customer_id</code>) fixed effects should not be included in the first-stage strength test. The incidental parameters problem causes severe bias in nonlinear probit models with many unit dummies, and unit-level heterogeneity is already absorbed by the SCM weights. Only time fixed effects (e.g. <code>fixed_effects = "event_time"</code>) are appropriate here.</li>
 </ul></div>
 </div>
   </div>
