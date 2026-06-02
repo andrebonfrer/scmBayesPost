@@ -20,7 +20,7 @@ pre-treatment outcomes after partialling out controls."><!-- mathjax --><script 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.2</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.3</span>
       </span>
     </div>
 
@@ -101,7 +101,7 @@ rows. Default <code>"budgetdummy"</code>.</p></dd>
 
 
 <dt id="arg-pre-periods">pre_periods<a class="anchor" aria-label="anchor" href="#arg-pre-periods"></a></dt>
-<dd><p>Integer vector of <code>wID</code> values. Default <code>NULL</code>.</p></dd>
+<dd><p>Integer vector of time values. Default <code>NULL</code>.</p></dd>
 
 
 <dt id="arg-alpha">alpha<a class="anchor" aria-label="anchor" href="#arg-alpha"></a></dt>
@@ -117,11 +117,6 @@ rows. Default <code>"budgetdummy"</code>.</p></dd>
     <p>A data.frame with columns <code>outcome</code>, <code>instrument</code>,
 <code>coefficient</code>, <code>std_error</code>, <code>t_stat</code>, <code>p_value</code>,
 <code>significant</code>, <code>conclusion</code>.</p>
-    </div>
-    <div id="details">
-    <h2>Details</h2>
-    <p>A significant coefficient of an instrument on a pre-treatment outcome
-is evidence of a direct effect, violating the exclusion restriction.</p>
     </div>
 
   </div>

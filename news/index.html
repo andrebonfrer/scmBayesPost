@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.2</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.3</span>
       </span>
     </div>
 
@@ -42,26 +42,33 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.4.2" id="scmbayespost-042">scmBayesPost 0.4.2<a class="anchor" aria-label="anchor" href="#scmbayespost-042"></a></h2>
+<h2 class="page-header" data-toc-text="0.4.3" id="scmbayespost-043">scmBayesPost 0.4.3<a class="anchor" aria-label="anchor" href="#scmbayespost-043"></a></h2>
 <div class="section level3">
-<h3 id="new-features-0-4-2">New features<a class="anchor" aria-label="anchor" href="#new-features-0-4-2"></a></h3>
+<h3 id="new-features-0-4-3">New features<a class="anchor" aria-label="anchor" href="#new-features-0-4-3"></a></h3>
 <ul><li>
-<code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> gains a <code>fixed_effects</code> argument that switches from <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm</a></code> to <code><a href="https://lrberge.github.io/fixest/reference/feglm.html" class="external-link">fixest::feglm</a></code> when fixed effects are specified. This resolves convergence failures with large datasets (N = 292k observations) where standard <code>glm</code> is unable to handle high-dimensional fixed effects. Example usage:</li>
+<code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code> and <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> now accept <code>f.X</code> directly from <code>build_iv_formula()</code>. Treatment variable and instruments are parsed automatically from the second block of <code>f.X</code> (the instrument equation <code>treatment ~ instruments + controls</code>), eliminating the need to re-specify them separately:</li>
 </ul><div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span>  <span class="fu"><a href="../reference/test_instrument_strength.html">test_instrument_strength</a></span><span class="op">(</span></span>
-<span>    dt            <span class="op">=</span> <span class="va">bdt_horizon</span>,</span>
-<span>    treatment     <span class="op">=</span> <span class="st">"budgetdummy"</span>,</span>
-<span>    instruments   <span class="op">=</span> <span class="st">"peer_adoption_rate"</span>,</span>
-<span>    fixed_effects <span class="op">=</span> <span class="st">"event_time"</span>,</span>
-<span>    method        <span class="op">=</span> <span class="st">"probit"</span></span>
+<code class="sourceCode R"><span>  <span class="va">f.X</span> <span class="op">&lt;-</span> <span class="fu">build_iv_formula</span><span class="op">(</span></span>
+<span>    outcome     <span class="op">=</span> <span class="va">outcomevar</span>,</span>
+<span>    instruments <span class="op">=</span> <span class="st">"peer_adoption_rate"</span>,</span>
+<span>    controls    <span class="op">=</span> <span class="st">"factor(event_time)"</span></span>
+<span>  <span class="op">)</span></span>
+<span></span>
+<span>  <span class="va">validity</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/instrument_validity_report.html">instrument_validity_report</a></span><span class="op">(</span></span>
+<span>    dt       <span class="op">=</span> <span class="va">bdt_horizon</span>,</span>
+<span>    f.X      <span class="op">=</span> <span class="va">f.X</span>,</span>
+<span>    outcomes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">outcomevar</span><span class="op">)</span>,</span>
+<span>    id_col   <span class="op">=</span> <span class="st">"customer_id"</span>,</span>
+<span>    time_col <span class="op">=</span> <span class="st">"event_time"</span>,</span>
+<span>    method   <span class="op">=</span> <span class="st">"probit"</span></span>
 <span>  <span class="op">)</span></span></code></pre></div>
-<p>When <code>fixed_effects</code> is <code>NULL</code> (default), behaviour is unchanged and <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm</a></code> is used as before.</p>
-<ul><li>
-<code>fixest</code> added to <code>Suggests</code>. It is only required when <code>fixed_effects</code> is non-NULL in <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code>. A clear error is raised if <code>fixest</code> is not installed and fixed effects are requested.</li>
+<ul><li><p><code><a href="https://lrberge.github.io/fixest/reference/feglm.html" class="external-link">fixest::feglm</a></code> is now selected automatically in <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> when <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms are detected on the RHS of the instrument equation. The <code>fixed_effects</code> argument introduced in 0.4.2 is no longer needed and has been removed. Passing <code>controls = "factor(event_time)"</code> in <code>build_iv_formula()</code> is sufficient.</p></li>
+<li><p>New internal helper <code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> classifies RHS terms from the instrument equation: plain variable names are treated as instruments, <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code>-wrapped terms as controls or fixed effects. The full parsed formula is passed directly to <code>feglm</code> or <code>glm</code> without reconstruction.</p></li>
+<li><p><code><a href="../reference/test_instrument_exclusion.html">test_instrument_exclusion()</a></code> and <code><a href="../reference/test_instrument_balance.html">test_instrument_balance()</a></code> now strip <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms from the instrument list automatically before running their tests, since these tests operate on plain numeric instrument values only.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="notes-0-4-2">Notes<a class="anchor" aria-label="anchor" href="#notes-0-4-2"></a></h3>
-<ul><li>Unit (<code>customer_id</code>) fixed effects should not be included in the first-stage strength test. The incidental parameters problem causes severe bias in nonlinear probit models with many unit dummies, and unit-level heterogeneity is already absorbed by the SCM weights. Only time fixed effects (e.g. <code>fixed_effects = "event_time"</code>) are appropriate here.</li>
+<h3 id="breaking-changes-0-4-3">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-4-3"></a></h3>
+<ul><li>The <code>fixed_effects</code> argument added to <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> and <code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code> in 0.4.2 has been removed. Include fixed effects via <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> in the <code>controls</code> argument of <code>build_iv_formula()</code> instead.</li>
 </ul></div>
 </div>
   </div>
