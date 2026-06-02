@@ -1,7 +1,7 @@
 Package: scmBayesPost
 Type: Package
 Title: Post-Synthetic-Control Hierarchical Modeling with General Weight Inputs
-Version: 0.4.3
+Version: 0.4.4
 Authors@R: person("Andre", "Bonfrer", role = c("aut","cre"), email = "andre.bonfrer@deakin.edu.au")
 Description: Generalizes mscPost to accept synthetic-control / augmented-synth weights from multiple sources.
 License: MIT + file LICENSE
