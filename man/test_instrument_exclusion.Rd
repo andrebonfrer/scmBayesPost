@@ -33,7 +33,7 @@ test_instrument_exclusion(
 \item{treatment}{Character. Treatment column used to identify pre-treatment
 rows. Default \code{"budgetdummy"}.}
 
-\item{pre_periods}{Integer vector of \code{wID} values. Default \code{NULL}.}
+\item{pre_periods}{Integer vector of time values. Default \code{NULL}.}
 
 \item{alpha}{Numeric. Significance level. Default \code{0.05}.}
 
@@ -49,8 +49,4 @@ Tests the exclusion restriction by regressing each outcome on the
 instruments using only PRE-TREATMENT observations (placebo test).
 Under a valid instrument, the instruments should not predict
 pre-treatment outcomes after partialling out controls.
-}
-\details{
-A significant coefficient of an instrument on a pre-treatment outcome
-is evidence of a direct effect, violating the exclusion restriction.
 }

@@ -1,37 +1,51 @@
-## scmBayesPost 0.4.2
+# scmBayesPost 0.4.3
 
-### New features
+## New features
 
-- `test_instrument_strength()` gains a `fixed_effects` argument that
-  switches from `stats::glm` to `fixest::feglm` when fixed effects are
-  specified. This resolves convergence failures with large datasets
-  (N = 292k observations) where standard `glm` is unable to handle
-  high-dimensional fixed effects. Example usage:
+- `instrument_validity_report()` and `test_instrument_strength()` now
+  accept `f.X` directly from `build_iv_formula()`. Treatment variable
+  and instruments are parsed automatically from the second block of
+  `f.X` (the instrument equation `treatment ~ instruments + controls`),
+  eliminating the need to re-specify them separately:
 
 ```r
-  test_instrument_strength(
-    dt            = bdt_horizon,
-    treatment     = "budgetdummy",
-    instruments   = "peer_adoption_rate",
-    fixed_effects = "event_time",
-    method        = "probit"
+  f.X <- build_iv_formula(
+    outcome     = outcomevar,
+    instruments = "peer_adoption_rate",
+    controls    = "factor(event_time)"
+  )
+
+  validity <- instrument_validity_report(
+    dt       = bdt_horizon,
+    f.X      = f.X,
+    outcomes = c(outcomevar),
+    id_col   = "customer_id",
+    time_col = "event_time",
+    method   = "probit"
   )
 ```
 
-  When `fixed_effects` is `NULL` (default), behaviour is unchanged and
-  `stats::glm` is used as before.
+- `fixest::feglm` is now selected automatically in
+  `test_instrument_strength()` when `factor()` terms are detected on
+  the RHS of the instrument equation. The `fixed_effects` argument
+  introduced in 0.4.2 is no longer needed and has been removed.
+  Passing `controls = "factor(event_time)"` in `build_iv_formula()`
+  is sufficient.
 
-- `fixest` added to `Suggests`. It is only required when
-  `fixed_effects` is non-NULL in `test_instrument_strength()`. A
-  clear error is raised if `fixest` is not installed and fixed effects
-  are requested.
+- New internal helper `.parse_iv_formula()` classifies RHS terms from
+  the instrument equation: plain variable names are treated as
+  instruments, `factor()`-wrapped terms as controls or fixed effects.
+  The full parsed formula is passed directly to `feglm` or `glm`
+  without reconstruction.
 
-### Notes
+- `test_instrument_exclusion()` and `test_instrument_balance()` now
+  strip `factor()` terms from the instrument list automatically before
+  running their tests, since these tests operate on plain numeric
+  instrument values only.
 
-- Unit (`customer_id`) fixed effects should not be included in the
-  first-stage strength test. The incidental parameters problem causes
-  severe bias in nonlinear probit models with many unit dummies, and
-  unit-level heterogeneity is already absorbed by the SCM weights.
-  Only time fixed effects (e.g. `fixed_effects = "event_time"`) are
-  appropriate here.
-  
+## Breaking changes
+
+- The `fixed_effects` argument added to `test_instrument_strength()`
+  and `instrument_validity_report()` in 0.4.2 has been removed.
+  Include fixed effects via `factor()` in the `controls` argument of
+  `build_iv_formula()` instead.

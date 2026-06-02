@@ -6,10 +6,10 @@
 \usage{
 test_instrument_strength(
   dt,
-  treatment,
-  instruments,
+  f.X = NULL,
+  treatment = NULL,
+  instruments = NULL,
   controls = NULL,
-  fixed_effects = NULL,
   id_col = "customer_id",
   time_col = "wID",
   pre_periods = NULL,
@@ -21,22 +21,26 @@ test_instrument_strength(
 \arguments{
 \item{dt}{data.table. Panel data in long format.}
 
-\item{treatment}{Character. Name of the binary treatment column.}
+\item{f.X}{Optional formula from \code{build_iv_formula()}.
+If supplied, \code{treatment} and \code{instruments} are parsed
+from its second block automatically, and \code{feglm} is used when
+\code{factor()} terms are detected.}
 
-\item{instruments}{Character vector. Names of instrument columns.}
+\item{treatment}{Character. Treatment column. Required if \code{f.X}
+is \code{NULL}.}
 
-\item{controls}{Character vector. Names of control columns. Default \code{NULL}.}
+\item{instruments}{Character vector. Instrument column names. Required
+if \code{f.X} is \code{NULL}.}
 
-\item{fixed_effects}{Character vector. Column names to use as fixed effects
-via \code{fixest::feglm}. E.g. \code{c("customer_id", "event_time")}.
-Default \code{NULL} (no fixed effects, uses \code{stats::glm}).}
+\item{controls}{Character vector. Additional control columns to include
+in the first-stage regression alongside instruments. Default \code{NULL}.}
 
 \item{id_col}{Character. Unit identifier. Default \code{"customer_id"}.}
 
 \item{time_col}{Character. Time identifier. Default \code{"wID"}.}
 
 \item{pre_periods}{Integer vector of time values to restrict to.
-Default \code{NULL} uses all rows where \code{treatment == 0}.}
+Default \code{NULL} uses all available rows.}
 
 \item{method}{\code{"probit"} (default) or \code{"ols"}.}
 
@@ -47,11 +51,13 @@ Default \code{NULL} uses all rows where \code{treatment == 0}.}
 \value{
 A list with elements \code{f_statistic}, \code{f_pvalue},
 \code{partial_r2}, \code{cragg_donald}, \code{n_instruments},
-\code{n_obs}, \code{first_stage_fit}, \code{passes_threshold}.
+\code{n_obs}, \code{first_stage_fit}, \code{passes_threshold},
+\code{method}, \code{use_feglm}.
 }
 \description{
-Runs the first-stage regression of treatment on instruments and controls,
+Runs the first-stage regression of treatment on instruments and controls
 and reports the F-statistic, partial R-squared, and Cragg-Donald statistic.
-Uses \code{fixest::feglm} when fixed effects are specified, and
-\code{stats::glm} otherwise.
+When \code{f.X} is supplied the full second-block formula is used directly,
+and \code{fixest::feglm} is selected automatically if \code{factor()}
+terms are present on the RHS. Otherwise \code{stats::glm} is used.
 }

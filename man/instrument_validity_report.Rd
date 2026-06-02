@@ -6,9 +6,10 @@
 \usage{
 instrument_validity_report(
   dt,
-  treatment,
+  f.X = NULL,
+  treatment = NULL,
   outcomes,
-  instruments,
+  instruments = NULL,
   controls = NULL,
   id_col = "customer_id",
   time_col = "wID",
@@ -22,26 +23,34 @@ instrument_validity_report(
 \arguments{
 \item{dt}{data.table. Panel data in long format.}
 
-\item{treatment}{Character. Treatment column name.}
+\item{f.X}{Optional formula from \code{build_iv_formula()}.
+If supplied, \code{treatment} and \code{instruments} are parsed from
+its second block. \code{feglm} is used automatically when
+\code{factor()} terms are present.}
 
-\item{outcomes}{Character vector. Outcome column names.}
+\item{treatment}{Character. Treatment column. Required if \code{f.X}
+is \code{NULL}.}
 
-\item{instruments}{Character vector. Instrument column names.}
+\item{outcomes}{Character vector. Outcome column names to test.}
 
-\item{controls}{Character vector. Control column names. Default \code{NULL}.}
+\item{instruments}{Character vector. Instrument column names. Overrides
+instruments parsed from \code{f.X} if supplied.}
+
+\item{controls}{Character vector. Additional control columns. Default
+\code{NULL}.}
 
 \item{id_col}{Character. Unit identifier. Default \code{"customer_id"}.}
 
 \item{time_col}{Character. Time identifier. Default \code{"wID"}.}
 
-\item{pre_periods}{Integer vector of pre-treatment \code{wID} values.
-Default \code{NULL}.}
+\item{pre_periods}{Integer vector of time values. Default \code{NULL}.}
 
 \item{method}{\code{"probit"} (default) or \code{"ols"}.}
 
 \item{alpha}{Numeric. Significance level. Default \code{0.05}.}
 
-\item{plot}{Logical. Show first-stage coefficient plot. Default \code{TRUE}.}
+\item{plot}{Logical. Show first-stage coefficient plot.
+Default \code{TRUE}.}
 
 \item{verbose}{Logical. Print individual test results. Default \code{TRUE}.}
 }
@@ -50,8 +59,9 @@ Invisibly returns a list with elements \code{strength},
 \code{exclusion}, \code{balance}, and \code{verdict}.
 }
 \description{
-Runs all three instrument diagnostics (strength, exclusion placebo,
-balance) and prints a consolidated verdict. Use this before relying on
-the \code{selection_probit_bayes} first stage in
-\code{gibbs_postscm()}.
+Runs instrument strength, exclusion, and balance tests and prints a
+consolidated verdict. Pass \code{f.X} from \code{build_iv_formula()} to
+extract treatment and instruments automatically. Uses
+\code{fixest::feglm} when \code{factor()} terms are detected on the RHS
+of the instrument equation.
 }
