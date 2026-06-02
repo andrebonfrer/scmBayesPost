@@ -27,10 +27,8 @@ build_iv_formula <- function(outcome,
                              controls    = NULL,
                              intercept   = FALSE) {
 
-  # Outcome RHS: treatment only, no controls
   outcome_rhs <- if (!intercept) paste("0 +", treatment) else treatment
 
-  # Instrument equation RHS: instruments + controls
   instr_vars <- c(instruments, controls)
   instr_part <- if (length(instr_vars) > 0L) {
     paste(treatment, "~", paste(instr_vars, collapse = " + "))
@@ -38,19 +36,20 @@ build_iv_formula <- function(outcome,
     NULL
   }
 
-  # Assemble formula
-  f <- if (!is.null(instr_part)) {
-    stats::as.formula(
-      paste0(outcome, " ~ ", outcome_rhs, " | ", instr_part)
-    )
+  f_str <- if (!is.null(instr_part)) {
+    paste0(outcome, " ~ ", outcome_rhs, " | ", instr_part)
   } else {
-    stats::as.formula(paste0(outcome, " ~ ", outcome_rhs))
+    paste0(outcome, " ~ ", outcome_rhs)
   }
 
-  # Store attributes for reliable parsing by .parse_iv_formula()
-  attr(f, "treatment")   <- treatment
-  attr(f, "instruments") <- instruments
-  attr(f, "controls")    <- controls
+  # Use structure() to preserve attributes — as.formula() strips them
+  f <- stats::as.formula(f_str)
 
-  f
+  structure(
+    f,
+    treatment   = treatment,
+    instruments = instruments,
+    controls    = controls,
+    class       = class(f)
+  )
 }

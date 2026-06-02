@@ -3,6 +3,7 @@
 export(align_weights_matrix)
 export(balance_table)
 export(build_W_from_augMultiSynth)
+export(build_iv_formula)
 export(check_panel_cols)
 export(compute_ess)
 export(compute_rhat)

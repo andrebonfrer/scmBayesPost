@@ -1,15 +1,10 @@
-# scmBayesPost 0.4.4
+# scmBayesPost 0.4.6
 
-## Bug fixes and improvements
+## Bug fixes
 
-- `build_iv_formula()` now stores `treatment`, `instruments`, and
-  `controls` as attributes on the returned formula object. This allows
-  `.parse_iv_formula()` to reliably identify which variables are
-  instruments versus controls without guessing from `factor()` wrapping,
-  which was fragile when plain numeric controls were present alongside
-  instruments.
-
-- `.parse_iv_formula()` updated to read formula attributes as the
-  preferred path. Falls back to `factor()` classification heuristic
-  for hand-built formulas that lack attributes, with a message
-  informing the user.
+- Fixed `build_iv_formula()` losing formula attributes (`treatment`,
+  `instruments`, `controls`) after construction. `as.formula()` strips
+  custom attributes, causing `.parse_iv_formula()` to fall back to the
+  unreliable `factor()` heuristic and misclassify plain numeric controls
+  as instruments. Fixed by using `structure()` to preserve attributes
+  on the formula object after `as.formula()` is called.
