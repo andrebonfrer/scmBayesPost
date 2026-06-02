@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.3</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.4</span>
       </span>
     </div>
 
@@ -42,33 +42,11 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.4.3" id="scmbayespost-043">scmBayesPost 0.4.3<a class="anchor" aria-label="anchor" href="#scmbayespost-043"></a></h2>
+<h2 class="page-header" data-toc-text="0.4.4" id="scmbayespost-044">scmBayesPost 0.4.4<a class="anchor" aria-label="anchor" href="#scmbayespost-044"></a></h2>
 <div class="section level3">
-<h3 id="new-features-0-4-3">New features<a class="anchor" aria-label="anchor" href="#new-features-0-4-3"></a></h3>
-<ul><li>
-<code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code> and <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> now accept <code>f.X</code> directly from <code>build_iv_formula()</code>. Treatment variable and instruments are parsed automatically from the second block of <code>f.X</code> (the instrument equation <code>treatment ~ instruments + controls</code>), eliminating the need to re-specify them separately:</li>
-</ul><div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span>  <span class="va">f.X</span> <span class="op">&lt;-</span> <span class="fu">build_iv_formula</span><span class="op">(</span></span>
-<span>    outcome     <span class="op">=</span> <span class="va">outcomevar</span>,</span>
-<span>    instruments <span class="op">=</span> <span class="st">"peer_adoption_rate"</span>,</span>
-<span>    controls    <span class="op">=</span> <span class="st">"factor(event_time)"</span></span>
-<span>  <span class="op">)</span></span>
-<span></span>
-<span>  <span class="va">validity</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/instrument_validity_report.html">instrument_validity_report</a></span><span class="op">(</span></span>
-<span>    dt       <span class="op">=</span> <span class="va">bdt_horizon</span>,</span>
-<span>    f.X      <span class="op">=</span> <span class="va">f.X</span>,</span>
-<span>    outcomes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">outcomevar</span><span class="op">)</span>,</span>
-<span>    id_col   <span class="op">=</span> <span class="st">"customer_id"</span>,</span>
-<span>    time_col <span class="op">=</span> <span class="st">"event_time"</span>,</span>
-<span>    method   <span class="op">=</span> <span class="st">"probit"</span></span>
-<span>  <span class="op">)</span></span></code></pre></div>
-<ul><li><p><code><a href="https://lrberge.github.io/fixest/reference/feglm.html" class="external-link">fixest::feglm</a></code> is now selected automatically in <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> when <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms are detected on the RHS of the instrument equation. The <code>fixed_effects</code> argument introduced in 0.4.2 is no longer needed and has been removed. Passing <code>controls = "factor(event_time)"</code> in <code>build_iv_formula()</code> is sufficient.</p></li>
-<li><p>New internal helper <code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> classifies RHS terms from the instrument equation: plain variable names are treated as instruments, <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code>-wrapped terms as controls or fixed effects. The full parsed formula is passed directly to <code>feglm</code> or <code>glm</code> without reconstruction.</p></li>
-<li><p><code><a href="../reference/test_instrument_exclusion.html">test_instrument_exclusion()</a></code> and <code><a href="../reference/test_instrument_balance.html">test_instrument_balance()</a></code> now strip <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms from the instrument list automatically before running their tests, since these tests operate on plain numeric instrument values only.</p></li>
-</ul></div>
-<div class="section level3">
-<h3 id="breaking-changes-0-4-3">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-4-3"></a></h3>
-<ul><li>The <code>fixed_effects</code> argument added to <code><a href="../reference/test_instrument_strength.html">test_instrument_strength()</a></code> and <code><a href="../reference/instrument_validity_report.html">instrument_validity_report()</a></code> in 0.4.2 has been removed. Include fixed effects via <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> in the <code>controls</code> argument of <code>build_iv_formula()</code> instead.</li>
+<h3 id="bug-fixes-and-improvements-0-4-4">Bug fixes and improvements<a class="anchor" aria-label="anchor" href="#bug-fixes-and-improvements-0-4-4"></a></h3>
+<ul><li><p><code>build_iv_formula()</code> now stores <code>treatment</code>, <code>instruments</code>, and <code>controls</code> as attributes on the returned formula object. This allows <code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> to reliably identify which variables are instruments versus controls without guessing from <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> wrapping, which was fragile when plain numeric controls were present alongside instruments.</p></li>
+<li><p><code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> updated to read formula attributes as the preferred path. Falls back to <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> classification heuristic for hand-built formulas that lack attributes, with a message informing the user.</p></li>
 </ul></div>
 </div>
   </div>
