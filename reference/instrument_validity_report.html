@@ -21,7 +21,7 @@ of the instrument equation."><!-- mathjax --><script src="https://cdnjs.cloudfla
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.4</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.6</span>
       </span>
     </div>
 
@@ -48,7 +48,7 @@ of the instrument equation."><!-- mathjax --><script src="https://cdnjs.cloudfla
 
     <div class="ref-description">
     <p>Runs instrument strength, exclusion, and balance tests and prints a
-consolidated verdict. Pass <code>f.X</code> from <code>build_iv_formula()</code> to
+consolidated verdict. Pass <code>f.X</code> from <code><a href="build_iv_formula.html">build_iv_formula()</a></code> to
 extract treatment and instruments automatically. Uses
 <code><a href="https://lrberge.github.io/fixest/reference/feglm.html" class="external-link">fixest::feglm</a></code> when <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms are detected on the RHS
 of the instrument equation.</p>
@@ -81,7 +81,7 @@ of the instrument equation.</p>
 
 
 <dt id="arg-f-x">f.X<a class="anchor" aria-label="anchor" href="#arg-f-x"></a></dt>
-<dd><p>Optional formula from <code>build_iv_formula()</code>.
+<dd><p>Optional formula from <code><a href="build_iv_formula.html">build_iv_formula()</a></code>.
 If supplied, <code>treatment</code> and <code>instruments</code> are parsed from
 its second block. <code>feglm</code> is used automatically when
 <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> terms are present.</p></dd>

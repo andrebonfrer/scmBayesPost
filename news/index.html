@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.4</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.6</span>
       </span>
     </div>
 
@@ -42,11 +42,10 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.4.4" id="scmbayespost-044">scmBayesPost 0.4.4<a class="anchor" aria-label="anchor" href="#scmbayespost-044"></a></h2>
+<h2 class="page-header" data-toc-text="0.4.6" id="scmbayespost-046">scmBayesPost 0.4.6<a class="anchor" aria-label="anchor" href="#scmbayespost-046"></a></h2>
 <div class="section level3">
-<h3 id="bug-fixes-and-improvements-0-4-4">Bug fixes and improvements<a class="anchor" aria-label="anchor" href="#bug-fixes-and-improvements-0-4-4"></a></h3>
-<ul><li><p><code>build_iv_formula()</code> now stores <code>treatment</code>, <code>instruments</code>, and <code>controls</code> as attributes on the returned formula object. This allows <code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> to reliably identify which variables are instruments versus controls without guessing from <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> wrapping, which was fragile when plain numeric controls were present alongside instruments.</p></li>
-<li><p><code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> updated to read formula attributes as the preferred path. Falls back to <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> classification heuristic for hand-built formulas that lack attributes, with a message informing the user.</p></li>
+<h3 id="bug-fixes-0-4-6">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-4-6"></a></h3>
+<ul><li>Fixed <code><a href="../reference/build_iv_formula.html">build_iv_formula()</a></code> losing formula attributes (<code>treatment</code>, <code>instruments</code>, <code>controls</code>) after construction. <code><a href="https://rdrr.io/r/stats/formula.html" class="external-link">as.formula()</a></code> strips custom attributes, causing <code><a href="../reference/dot-parse_iv_formula.html">.parse_iv_formula()</a></code> to fall back to the unreliable <code><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor()</a></code> heuristic and misclassify plain numeric controls as instruments. Fixed by using <code><a href="https://rdrr.io/r/base/structure.html" class="external-link">structure()</a></code> to preserve attributes on the formula object after <code><a href="https://rdrr.io/r/stats/formula.html" class="external-link">as.formula()</a></code> is called.</li>
 </ul></div>
 </div>
   </div>
