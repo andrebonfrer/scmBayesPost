@@ -9,6 +9,7 @@ test_instrument_strength(
   treatment,
   instruments,
   controls = NULL,
+  fixed_effects = NULL,
   id_col = "customer_id",
   time_col = "wID",
   pre_periods = NULL,
@@ -24,19 +25,20 @@ test_instrument_strength(
 
 \item{instruments}{Character vector. Names of instrument columns.}
 
-\item{controls}{Character vector. Names of control columns to partial
-out. Default \code{NULL}.}
+\item{controls}{Character vector. Names of control columns. Default \code{NULL}.}
 
-\item{id_col}{Character. Unit identifier column.
-Default \code{"customer_id"}.}
+\item{fixed_effects}{Character vector. Column names to use as fixed effects
+via \code{fixest::feglm}. E.g. \code{c("customer_id", "event_time")}.
+Default \code{NULL} (no fixed effects, uses \code{stats::glm}).}
 
-\item{time_col}{Character. Time identifier column. Default \code{"wID"}.}
+\item{id_col}{Character. Unit identifier. Default \code{"customer_id"}.}
 
-\item{pre_periods}{Integer vector of \code{wID} values to restrict to.
+\item{time_col}{Character. Time identifier. Default \code{"wID"}.}
+
+\item{pre_periods}{Integer vector of time values to restrict to.
 Default \code{NULL} uses all rows where \code{treatment == 0}.}
 
-\item{method}{\code{"probit"} (default) or \code{"ols"} (linear
-probability model).}
+\item{method}{\code{"probit"} (default) or \code{"ols"}.}
 
 \item{alpha}{Numeric. Significance level. Default \code{0.05}.}
 
@@ -49,10 +51,7 @@ A list with elements \code{f_statistic}, \code{f_pvalue},
 }
 \description{
 Runs the first-stage regression of treatment on instruments and controls,
-and reports the F-statistic, partial R^2, and Cragg-Donald statistic.
-}
-\details{
-For a single instrument the Stock-Yogo (2005) critical value is F > 10
-for a 10\\% maximal IV size distortion.  For multiple instruments the
-Cragg-Donald statistic should exceed the Stock-Yogo tabulated values.
+and reports the F-statistic, partial R-squared, and Cragg-Donald statistic.
+Uses \code{fixest::feglm} when fixed effects are specified, and
+\code{stats::glm} otherwise.
 }

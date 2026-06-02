@@ -31,28 +31,25 @@
 # =============================================================================
 
 
-# -----------------------------------------------------------------------------
 #' Test instrument strength (relevance)
 #'
 #' Runs the first-stage regression of treatment on instruments and controls,
-#' and reports the F-statistic, partial R^2, and Cragg-Donald statistic.
-#'
-#' For a single instrument the Stock-Yogo (2005) critical value is F > 10
-#' for a 10\% maximal IV size distortion.  For multiple instruments the
-#' Cragg-Donald statistic should exceed the Stock-Yogo tabulated values.
+#' and reports the F-statistic, partial R-squared, and Cragg-Donald statistic.
+#' Uses \code{fixest::feglm} when fixed effects are specified, and
+#' \code{stats::glm} otherwise.
 #'
 #' @param dt           data.table. Panel data in long format.
 #' @param treatment    Character. Name of the binary treatment column.
 #' @param instruments  Character vector. Names of instrument columns.
-#' @param controls     Character vector. Names of control columns to partial
-#'   out. Default \code{NULL}.
-#' @param id_col       Character. Unit identifier column.
-#'   Default \code{"customer_id"}.
-#' @param time_col     Character. Time identifier column. Default \code{"wID"}.
-#' @param pre_periods  Integer vector of \code{wID} values to restrict to.
+#' @param controls     Character vector. Names of control columns. Default \code{NULL}.
+#' @param fixed_effects Character vector. Column names to use as fixed effects
+#'   via \code{fixest::feglm}. E.g. \code{c("customer_id", "event_time")}.
+#'   Default \code{NULL} (no fixed effects, uses \code{stats::glm}).
+#' @param id_col       Character. Unit identifier. Default \code{"customer_id"}.
+#' @param time_col     Character. Time identifier. Default \code{"wID"}.
+#' @param pre_periods  Integer vector of time values to restrict to.
 #'   Default \code{NULL} uses all rows where \code{treatment == 0}.
-#' @param method       \code{"probit"} (default) or \code{"ols"} (linear
-#'   probability model).
+#' @param method       \code{"probit"} (default) or \code{"ols"}.
 #' @param alpha        Numeric. Significance level. Default \code{0.05}.
 #' @param verbose      Logical. Print results. Default \code{TRUE}.
 #'
@@ -63,88 +60,131 @@
 test_instrument_strength <- function(dt,
                                      treatment,
                                      instruments,
-                                     controls    = NULL,
-                                     id_col      = "customer_id",
-                                     time_col    = "wID",
-                                     pre_periods = NULL,
-                                     method      = c("probit", "ols"),
-                                     alpha       = 0.05,
-                                     verbose     = TRUE) {
+                                     controls        = NULL,
+                                     fixed_effects   = NULL,
+                                     id_col          = "customer_id",
+                                     time_col        = "wID",
+                                     pre_periods     = NULL,
+                                     method          = c("probit", "ols"),
+                                     alpha           = 0.05,
+                                     verbose         = TRUE) {
 
   method <- match.arg(method)
   data.table::setDT(dt)
 
-  dt_pre <- if (is.null(pre_periods)) dt[get(treatment) == 0L]
+  dt_use <- if (is.null(pre_periods)) dt
   else dt[get(time_col) %in% pre_periods]
 
-  if (nrow(dt_pre) == 0L)
-    stop("No pre-treatment observations found.", call. = FALSE)
+  if (nrow(dt_use) == 0L)
+    stop("No observations found.", call. = FALSE)
 
-  miss <- setdiff(c(treatment, instruments, controls), names(dt_pre))
+  miss <- setdiff(c(treatment, instruments, controls, fixed_effects), names(dt_use))
   if (length(miss))
     stop("Columns not found: ", paste(miss, collapse = ", "), call. = FALSE)
 
-  n_obs  <- nrow(dt_pre)
+  n_obs  <- nrow(dt_use)
   n_inst <- length(instruments)
-  df_pre <- as.data.frame(dt_pre)
+  df_use <- as.data.frame(dt_use)
 
-  rhs_full    <- paste(c(instruments, controls), collapse = " + ")
+  use_feglm <- !is.null(fixed_effects) && length(fixed_effects) > 0L
+
+  if (use_feglm && !requireNamespace("fixest", quietly = TRUE))
+    stop("Package 'fixest' required when fixed_effects are specified.",
+         call. = FALSE)
+
+  # ---- build formulas
+  rhs_vars    <- c(instruments, controls)
+  rhs_full    <- paste(rhs_vars, collapse = " + ")
   rhs_reduced <- if (length(controls) > 0L)
     paste(controls, collapse = " + ") else "1"
+  fe_part     <- if (use_feglm)
+    paste("|", paste(fixed_effects, collapse = " + ")) else ""
 
-  f_full    <- stats::as.formula(paste(treatment, "~", rhs_full))
-  f_reduced <- stats::as.formula(paste(treatment, "~", rhs_reduced))
+  f_full    <- stats::as.formula(
+    paste(treatment, "~", rhs_full, fe_part))
+  f_reduced <- stats::as.formula(
+    paste(treatment, "~", rhs_reduced, fe_part))
 
-  if (method == "probit") {
+  # ---- fit models
+  if (use_feglm) {
+
+    fam <- if (method == "probit") "probit" else "gaussian"
+
+    fit_full    <- fixest::feglm(f_full,    data = df_use, family = fam)
+    fit_reduced <- fixest::feglm(f_reduced, data = df_use, family = fam)
+
+    # Likelihood-ratio test
+    ll_full    <- as.numeric(stats::logLik(fit_full))
+    ll_reduced <- as.numeric(stats::logLik(fit_reduced))
+    lr_stat    <- 2 * (ll_full - ll_reduced)
+    f_stat     <- lr_stat / n_inst
+    f_pvalue   <- stats::pchisq(lr_stat, df = n_inst, lower.tail = FALSE)
+
+    # Partial R2 via McFadden: improvement of full over reduced
+    # relative to null (intercept only, no FE — approximate)
+    partial_r2 <- max(0, 1 - exp(-lr_stat / n_obs))
+
+    first_stage_fit <- fit_full
+
+  } else if (method == "probit") {
+
     fam         <- stats::binomial(link = "probit")
-    fit_full    <- stats::glm(f_full,    data = df_pre, family = fam)
-    fit_reduced <- stats::glm(f_reduced, data = df_pre, family = fam)
+    fit_full    <- stats::glm(f_full,    data = df_use, family = fam)
+    fit_reduced <- stats::glm(f_reduced, data = df_use, family = fam)
     fit_null    <- stats::glm(
       stats::as.formula(paste(treatment, "~ 1")),
-      data = df_pre, family = fam
+      data = df_use, family = fam
     )
 
-    lr_stat  <- as.numeric(2 * (stats::logLik(fit_full) -
-                                  stats::logLik(fit_reduced)))
-    f_stat   <- lr_stat / n_inst
-    f_pvalue <- stats::pchisq(lr_stat, df = n_inst, lower.tail = FALSE)
+    lr_stat    <- as.numeric(2 * (stats::logLik(fit_full) -
+                                    stats::logLik(fit_reduced)))
+    f_stat     <- lr_stat / n_inst
+    f_pvalue   <- stats::pchisq(lr_stat, df = n_inst, lower.tail = FALSE)
 
     ll_full    <- as.numeric(stats::logLik(fit_full))
     ll_reduced <- as.numeric(stats::logLik(fit_reduced))
     ll_null    <- as.numeric(stats::logLik(fit_null))
     partial_r2 <- max(0, (ll_reduced - ll_full) / (ll_reduced - ll_null))
 
-  } else {
-    fit_full    <- stats::lm(f_full,    data = df_pre)
-    fit_reduced <- stats::lm(f_reduced, data = df_pre)
+    first_stage_fit <- fit_full
 
-    ftest    <- stats::anova(fit_reduced, fit_full)
-    f_stat   <- ftest$F[2]
-    f_pvalue <- ftest[["Pr(>F)"]][2]
+  } else {
+
+    fit_full    <- stats::lm(f_full,    data = df_use)
+    fit_reduced <- stats::lm(f_reduced, data = df_use)
+
+    ftest      <- stats::anova(fit_reduced, fit_full)
+    f_stat     <- ftest$F[2]
+    f_pvalue   <- ftest[["Pr(>F)"]][2]
 
     rss_full    <- sum(stats::resid(fit_full)^2)
     rss_reduced <- sum(stats::resid(fit_reduced)^2)
     partial_r2  <- (rss_reduced - rss_full) / rss_reduced
+
+    first_stage_fit <- fit_full
   }
 
-  cragg_donald <- f_stat   # exact for single IV; approx for multiple
+  cragg_donald <- f_stat
   passes       <- !is.na(f_stat) && f_stat > 10
 
   if (verbose) {
     cat("\n", strrep("=", 65), "\n", sep = "")
     cat("  Instrument Strength (Relevance) Test\n")
     cat(strrep("=", 65), "\n", sep = "")
-    cat(sprintf("  Method             : %s\n", method))
+    cat(sprintf("  Method             : %s%s\n", method,
+                if (use_feglm) " (feglm)" else " (glm)"))
     cat(sprintf("  Instruments        : %s\n",
                 paste(instruments, collapse = ", ")))
-    cat(sprintf("  N (pre-treatment)  : %d\n", n_obs))
+    if (use_feglm)
+      cat(sprintf("  Fixed effects      : %s\n",
+                  paste(fixed_effects, collapse = ", ")))
+    cat(sprintf("  N observations     : %d\n", n_obs))
     cat(sprintf("  N instruments      : %d\n", n_inst))
     cat(strrep("-", 65), "\n")
-    lbl <- if (method == "probit") "LR-based F-stat" else "First-stage F-stat"
-    cat(sprintf("  %-21s: %.3f\n", lbl,          f_stat))
-    cat(sprintf("  %-21s: %.4f\n", "p-value",    f_pvalue))
-    cat(sprintf("  %-21s: %.4f\n", "Partial R^2", partial_r2))
-    cat(sprintf("  %-21s: %.3f\n", "Cragg-Donald", cragg_donald))
+    cat(sprintf("  %-21s: %.3f\n", "LR-based F-stat",  f_stat))
+    cat(sprintf("  %-21s: %.4f\n", "p-value",           f_pvalue))
+    cat(sprintf("  %-21s: %.4f\n", "Partial R-sq",      partial_r2))
+    cat(sprintf("  %-21s: %.3f\n", "Cragg-Donald",      cragg_donald))
     cat(sprintf("  %-21s: %s\n",  "Stock-Yogo (F>10)",
                 if (passes) "PASS" else "FAIL"))
     cat(strrep("=", 65), "\n\n")
@@ -157,9 +197,10 @@ test_instrument_strength <- function(dt,
     cragg_donald     = cragg_donald,
     n_instruments    = n_inst,
     n_obs            = n_obs,
-    first_stage_fit  = fit_full,
+    first_stage_fit  = first_stage_fit,
     passes_threshold = passes,
-    method           = method
+    method           = method,
+    use_feglm        = use_feglm
   ))
 }
 
