@@ -42,14 +42,13 @@
 # -----------------------------------------------------------------------------
 #' Parse IV formula into components
 #'
-#' Extracts treatment, instrument, and control variable names from the
-#' second block of a formula produced by \code{build_iv_formula()}.
-#' The second block has the form
-#' \code{treatment ~ instruments + controls + factor(fe)}.
-#' Variables wrapped in \code{factor()} are classified as controls/fixed
-#' effects; plain variable names are classified as instruments.
-#' The full second-block formula is also returned for direct use in
-#' \code{fixest::feglm()}.
+#' Extracts treatment, instrument, and control variable names from a formula
+#' produced by \code{build_iv_formula()}. The preferred path reads the
+#' \code{instruments}, \code{controls}, and \code{treatment} attributes
+#' stored by \code{build_iv_formula()} at creation time, which gives an
+#' unambiguous classification regardless of whether controls are plain
+#' numeric variables or \code{factor()} terms. Falls back to classifying
+#' by \code{factor()} wrapping when attributes are absent.
 #'
 #' @param f.X Formula from \code{build_iv_formula()}.
 #'
@@ -57,6 +56,37 @@
 #'   \code{controls}, and \code{fs_formula}.
 #' @keywords internal
 .parse_iv_formula <- function(f.X) {
+
+  # ---- preferred path: read attributes stored by build_iv_formula()
+  if (!is.null(attr(f.X, "instruments"))) {
+
+    treatment   <- attr(f.X, "treatment")
+    instruments <- attr(f.X, "instruments")
+    controls    <- attr(f.X, "controls")
+
+    f_str    <- deparse(f.X, width.cutoff = 500L)
+    blocks   <- strsplit(f_str, "\\|")[[1L]]
+    if (length(blocks) < 2L)
+      stop("f.X has no second block (instrument equation).", call. = FALSE)
+    fs_block   <- trimws(blocks[[2L]])
+    fs_parts   <- strsplit(fs_block, "~")[[1L]]
+    rhs        <- trimws(fs_parts[[2L]])
+    fs_formula <- stats::as.formula(paste(treatment, "~", rhs))
+
+    return(list(
+      treatment   = treatment,
+      instruments = instruments,
+      controls    = controls,
+      fs_formula  = fs_formula
+    ))
+  }
+
+  # ---- fallback path: guess from factor() wrapping
+  message(paste0(
+    "f.X has no instrument attributes. ",
+    "Classifying factor() terms as controls, plain terms as instruments. ",
+    "For reliable classification use build_iv_formula()."
+  ))
 
   f_str  <- deparse(f.X, width.cutoff = 500L)
   blocks <- strsplit(f_str, "\\|")[[1L]]
@@ -77,18 +107,14 @@
   treatment <- trimws(fs_parts[[1L]])
   rhs       <- trimws(fs_parts[[2L]])
 
-  # Extract term labels via stats::terms (handles factor(), I(), interactions)
   rhs_terms <- attr(
     stats::terms(stats::as.formula(paste("~", rhs))),
     "term.labels"
   )
 
-  # Classify: factor() wrapping = control/FE; plain name = instrument
   instruments <- rhs_terms[!grepl("factor\\(", rhs_terms, ignore.case = TRUE)]
   controls    <- rhs_terms[ grepl("factor\\(", rhs_terms, ignore.case = TRUE)]
-
-  # Full second-block formula for direct use in feglm / glm
-  fs_formula <- stats::as.formula(paste(treatment, "~", rhs))
+  fs_formula  <- stats::as.formula(paste(treatment, "~", rhs))
 
   list(
     treatment   = treatment,

@@ -14,13 +14,12 @@ A list with elements \code{treatment}, \code{instruments},
 \code{controls}, and \code{fs_formula}.
 }
 \description{
-Extracts treatment, instrument, and control variable names from the
-second block of a formula produced by \code{build_iv_formula()}.
-The second block has the form
-\code{treatment ~ instruments + controls + factor(fe)}.
-Variables wrapped in \code{factor()} are classified as controls/fixed
-effects; plain variable names are classified as instruments.
-The full second-block formula is also returned for direct use in
-\code{fixest::feglm()}.
+Extracts treatment, instrument, and control variable names from a formula
+produced by \code{build_iv_formula()}. The preferred path reads the
+\code{instruments}, \code{controls}, and \code{treatment} attributes
+stored by \code{build_iv_formula()} at creation time, which gives an
+unambiguous classification regardless of whether controls are plain
+numeric variables or \code{factor()} terms. Falls back to classifying
+by \code{factor()} wrapping when attributes are absent.
 }
 \keyword{internal}
