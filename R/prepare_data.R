@@ -30,6 +30,9 @@
 #'
 #' @param dta data.table panel containing id/time/treatment and covariates.
 #' @param W weights matrix (rownames unit ids, colnames treated ids) OR NULL if res provided.
+#' @param w_min Numeric; donors with weight below this are dropped from each
+#'   treated unit's pseudo-panel and the remaining weights renormalised. 0
+#'   (default) keeps every positive-weight donor exactly.
 #' @param res optional fit object (e.g., multisynth, augMultiSynth-like) used to build W.
 #' @param y_name outcome column in dta.
 #' @param f.X formula for the per-observation design matrix (must include treatment column if desired).
@@ -74,7 +77,8 @@ prepare_data_general <- function(dta,
                                                   "selection_probit_bayes",
                                                   "treat_iv"),
                                  treat_threshold = 0,
-                                 verbose = TRUE) {
+                                 verbose = TRUE,
+                                 w_min = 0) {
 
   treat_type   <- match.arg(treat_type)
   second_stage <- match.arg(second_stage)
@@ -234,7 +238,37 @@ prepare_data_general <- function(dta,
   J0 <- length(treated_ids)
   J  <- length(id_universe)
 
-  pseudo_ids <- lapply(treated_ids, function(tr) c(tr, id_controls))
+  # Each treated unit's pseudo-panel: the unit plus the donors that carry
+  # positive weight in its column of W. Zero-weight donors contribute nothing
+  # to the weighted regression (every sampler multiplies by w), so dropping them
+  # changes no estimate, while with large donor pools (e.g. 4,000 stratified
+  # onboarders) they are the overwhelming majority of rows: J0 x (N_donors x T)
+  # was ~830 million rows at J0 = 1,879, N_donors = 4,000, T = 111.
+  W_chr <- W
+  if (is.null(rownames(W_chr))) stop("W must have rownames = unit ids.")
+  # Optional weight floor (w_min > 0): donors below the floor are dropped and
+  # the remaining weights renormalised to the column's original mass. This is
+  # an approximation (the counterfactual loses the dropped donors' small
+  # contribution) traded for a large reduction in rows when solvers spread
+  # tiny positive weights over hundreds of donors.
+  if (w_min > 0) {
+    for (j0 in seq_len(J0)) {
+      wcol <- W_chr[, j0]; tr <- as.character(treated_ids[j0])
+      dn <- rownames(W_chr) != tr
+      keep <- dn & is.finite(wcol) & wcol >= w_min
+      mass_all <- sum(wcol[dn], na.rm = TRUE); mass_keep <- sum(wcol[keep])
+      if (mass_keep > 0) { wcol[dn & !keep] <- 0; wcol[keep] <- wcol[keep] * mass_all / mass_keep; W_chr[, j0] <- wcol }
+    }
+    W <- W_chr
+  }
+  pseudo_ids <- lapply(seq_len(J0), function(j0) {
+    tr <- as.character(treated_ids[j0])
+    wcol <- W_chr[, j0]
+    keep <- rownames(W_chr)[is.finite(wcol) & wcol > 0 & rownames(W_chr) != tr]
+    keep <- keep[keep %in% id_controls]
+    if (!length(keep)) keep <- id_controls              # degenerate: fall back to all controls
+    c(tr, keep)
+  })
 
   dta_idx <- data.table::data.table(
     id  = as.character(dta[[id_col]]),
