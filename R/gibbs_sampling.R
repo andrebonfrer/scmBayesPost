@@ -243,7 +243,7 @@ gibbs_sampling_simple <- function(gdata, n_iter = 1000, burn_in = 500,
   pre    <- .precompute_unit_stats(X_list, w_list, y_list, K, J0)
   XtWX   <- pre$XtWX
   XtWy0  <- pre$XtWy   # fixed — no rho/nu in this sampler
-  N_total <- sum(sapply(y_list, length))
+  N_total <- sum(sapply(w_list, function(w) sum(w > 0)))   # rows with positive weight: zero-weight rows carry no information
 
   beta_bd <- numeric(K * J0)
   sigma2  <- 1
@@ -316,7 +316,7 @@ gibbs_sampling_moderators <- function(gdata, n_iter = 1000, burn_in = 500,
 
   pre   <- .precompute_unit_stats(X_list, w_list, NULL, K, J0)
   XtWX  <- pre$XtWX
-  N_total <- sum(sapply(y_list, length))
+  N_total <- sum(sapply(w_list, function(w) sum(w > 0)))   # rows with positive weight: zero-weight rows carry no information
 
   beta_bd <- numeric(K * J0)
   gamma   <- rep(0, G)
@@ -423,7 +423,7 @@ gibbs_sampling_selection <- function(gdata, n_iter = 1000, burn_in = 500,
   A_delta_base <- XfsXfs + Sigma_delta_prior_inv
   pre          <- .precompute_unit_stats(X_list, w_list, NULL, K, J0)
   XtWX         <- pre$XtWX
-  N_total      <- sum(sapply(y_list, length))
+  N_total      <- sum(sapply(w_list, function(w) sum(w > 0)))   # rows with positive weight
   treat_idx    <- which(d_vec == 1L)
   ctrl_idx     <- which(d_vec == 0L)
 
@@ -568,7 +568,7 @@ gibbs_sampling_selection_moderators <- function(gdata, n_iter = 1000,
   A_delta_base <- XfsXfs + Sigma_delta_prior_inv
   pre          <- .precompute_unit_stats(X_list, w_list, NULL, K, J0)
   XtWX         <- pre$XtWX
-  N_total      <- sum(sapply(y_list, length))
+  N_total      <- sum(sapply(w_list, function(w) sum(w > 0)))   # rows with positive weight
   treat_idx    <- which(d_vec == 1L)
   ctrl_idx     <- which(d_vec == 0L)
 

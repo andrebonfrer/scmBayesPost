@@ -18,7 +18,8 @@ prepare_data_general(
   second_stage = c("none", "moderators", "moderators_iv"),
   first_stage = c("none", "selection_probit", "selection_probit_bayes", "treat_iv"),
   treat_threshold = 0,
-  verbose = TRUE
+  verbose = TRUE,
+  w_min = 0
 )
 }
 \arguments{
@@ -60,6 +61,10 @@ in f.X: \code{outcome ~ covars | treatment ~ selection_covars}.}
 \item{treat_threshold}{threshold for continuous treated definition.}
 
 \item{verbose}{logical.}
+
+\item{w_min}{Numeric; donors with weight below this are dropped from each
+treated unit's pseudo-panel and the remaining weights renormalised. 0
+(default) keeps every positive-weight donor exactly.}
 }
 \value{
 list with Y_block, X_block, W, Z_block (optional), instruments
