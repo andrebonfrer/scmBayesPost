@@ -18,7 +18,7 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">scmBayesPost</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.6</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.7</span>
       </span>
     </div>
 
@@ -63,7 +63,8 @@ Accepts a canonical weights matrix with rownames=unit ids and colnames=treated i
 <span>  second_stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"moderators"</span>, <span class="st">"moderators_iv"</span><span class="op">)</span>,</span>
 <span>  first_stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"selection_probit"</span>, <span class="st">"selection_probit_bayes"</span>, <span class="st">"treat_iv"</span><span class="op">)</span>,</span>
 <span>  treat_threshold <span class="op">=</span> <span class="fl">0</span>,</span>
-<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  w_min <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -144,6 +145,12 @@ in f.X: <code>outcome ~ covars | treatment ~ selection_covars</code>.</p></dd>
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
 <dd><p>logical.</p></dd>
 
+
+<dt id="arg-w-min">w_min<a class="anchor" aria-label="anchor" href="#arg-w-min"></a></dt>
+<dd><p>Numeric; donors with weight below this are dropped from each
+treated unit's pseudo-panel and the remaining weights renormalised. 0
+(default) keeps every positive-weight donor exactly.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
@@ -164,7 +171,7 @@ gdata$first_stage contains X_fs, d, delta0, and fit.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>
