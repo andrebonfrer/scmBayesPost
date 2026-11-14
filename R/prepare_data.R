@@ -56,6 +56,34 @@
 #'   }
 #' @param treat_threshold threshold for continuous treated definition.
 #' @param verbose logical.
+#' @param likelihood `"pseudo_panel"` (default, the original behaviour) or
+#'   `"conditional"`.
+#'   \describe{
+#'     \item{"pseudo_panel"}{Each treated unit is stacked with its
+#'       positive-weight donors over all periods, donor rows weighted by W and
+#'       treated as observations. Donors that are themselves columns of W are
+#'       dropped without renormalising. With `f.X = y ~ treatment` there are no
+#'       unit or period effects, so tau absorbs the pre-period level gap between
+#'       a treated unit and its synthetic control, and posterior intervals are
+#'       too narrow. Warns once per session.}
+#'     \item{"conditional"}{The synthetic-control (gap-series) likelihood,
+#'       conditional on donor paths and weights. For each treated unit the
+#'       within-period contrast (1, -w) is applied to the outcome and to every
+#'       column of the design over event times `-L..-1` and `post`: period
+#'       effects drop out, the intercept column becomes the unit-effect
+#'       contrast (set to 1), the treatment column becomes the unit's own
+#'       treatment indicator, and other covariates enter as treated-minus-
+#'       synthetic differences. With `f.X = y ~ 1 + treatment`, OLS on each
+#'       unit's rows gives the post-minus-pre mean of the gap series (the
+#'       de-meaned synthetic-control estimate), and the posterior is the
+#'       posterior for the gap series. All positive-weight donors are used,
+#'       including treated units that adopt after the window; a donor treated
+#'       inside the window is an error. Time must be in integer periods.
+#'       Requires `first_stage = "none"`.}
+#'   }
+#' @param L Number of pre-treatment periods for `likelihood = "conditional"`.
+#' @param post Post-treatment event times (>= 0) for `likelihood =
+#'   "conditional"`, e.g. `1:K` to match augMultiSynth's `eval_avg_1K()`.
 #'
 #' @return list with Y_block, X_block, W, Z_block (optional), instruments
 #'   (optional), and metadata. When first_stage = "selection_probit_bayes",
@@ -78,11 +106,31 @@ prepare_data_general <- function(dta,
                                                   "treat_iv"),
                                  treat_threshold = 0,
                                  verbose = TRUE,
-                                 w_min = 0) {
+                                 w_min = 0,
+                                 likelihood = c("pseudo_panel", "conditional"),
+                                 L = NULL,
+                                 post = NULL) {
 
   treat_type   <- match.arg(treat_type)
   second_stage <- match.arg(second_stage)
   first_stage  <- match.arg(first_stage)
+  likelihood   <- match.arg(likelihood)
+
+  if (likelihood == "conditional") {
+    if (first_stage != "none")
+      stop("likelihood = 'conditional' currently requires first_stage = 'none'.", call. = FALSE)
+    if (is.null(L) || is.null(post))
+      stop("likelihood = 'conditional' needs L (pre periods) and post (post event times).", call. = FALSE)
+    L <- as.integer(L)
+    if (length(L) != 1L || is.na(L) || L < 1L) stop("L must be a positive integer.", call. = FALSE)
+    post <- sort(unique(as.integer(post)))
+    if (!length(post) || anyNA(post) || any(post < 0L))
+      stop("post must contain event times >= 0.", call. = FALSE)
+    if (L + length(post) < 3L) stop("Need L + length(post) >= 3.", call. = FALSE)
+    if (w_min > 0) warning("w_min is ignored with likelihood = 'conditional'.", call. = FALSE)
+  } else {
+    .warn_pseudo_panel_once()
+  }
 
   check_panel_cols(dta, id_col, time_col, tr_col)
   if (!y_name %in% names(dta)) stop("y_name not found in dta.")
@@ -238,91 +286,103 @@ prepare_data_general <- function(dta,
   J0 <- length(treated_ids)
   J  <- length(id_universe)
 
-  # Each treated unit's pseudo-panel: the unit plus the donors that carry
-  # positive weight in its column of W. Zero-weight donors contribute nothing
-  # to the weighted regression (every sampler multiplies by w), so dropping them
-  # changes no estimate, while with large donor pools (e.g. 4,000 stratified
-  # onboarders) they are the overwhelming majority of rows: J0 x (N_donors x T)
-  # was ~830 million rows at J0 = 1,879, N_donors = 4,000, T = 111.
-  W_chr <- W
-  if (is.null(rownames(W_chr))) stop("W must have rownames = unit ids.")
-  # Optional weight floor (w_min > 0): donors below the floor are dropped and
-  # the remaining weights renormalised to the column's original mass. This is
-  # an approximation (the counterfactual loses the dropped donors' small
-  # contribution) traded for a large reduction in rows when solvers spread
-  # tiny positive weights over hundreds of donors.
-  if (w_min > 0) {
-    for (j0 in seq_len(J0)) {
-      wcol <- W_chr[, j0]; tr <- as.character(treated_ids[j0])
-      dn <- rownames(W_chr) != tr
-      keep <- dn & is.finite(wcol) & wcol >= w_min
-      mass_all <- sum(wcol[dn], na.rm = TRUE); mass_keep <- sum(wcol[keep])
-      if (mass_keep > 0) { wcol[dn & !keep] <- 0; wcol[keep] <- wcol[keep] * mass_all / mass_keep; W_chr[, j0] <- wcol }
+  if (likelihood == "conditional") {
+    if (verbose) message("Building gap-series (conditional-likelihood) panels...")
+    dta_idx <- data.table::data.table(id = as.character(dta[[id_col]]), wID = dta[[time_col]])
+    stopifnot(nrow(dta_idx) == nrow(X_mm), length(y_vec) == nrow(dta_idx))
+    cp <- .build_conditional_panels(
+      id_vec = dta_idx[["id"]], t_vec = dta_idx[["wID"]], d_vec = dta[[tr_col]],
+      X_mm = X_mm, y_vec = y_vec, W = W, treated_ids = treated_ids,
+      L = L, post = post, treat_threshold = treat_threshold)
+    X_list <- cp$X_list; y_list <- cp$y_list; w_list <- cp$w_list
+    row_idx_list <- cp$row_idx_list; X_idlist <- cp$X_idlist
+  } else {
+    # Each treated unit's pseudo-panel: the unit plus the donors that carry
+    # positive weight in its column of W. Zero-weight donors contribute nothing
+    # to the weighted regression (every sampler multiplies by w), so dropping them
+    # changes no estimate, while with large donor pools (e.g. 4,000 stratified
+    # onboarders) they are the overwhelming majority of rows: J0 x (N_donors x T)
+    # was ~830 million rows at J0 = 1,879, N_donors = 4,000, T = 111.
+    W_chr <- W
+    if (is.null(rownames(W_chr))) stop("W must have rownames = unit ids.")
+    # Optional weight floor (w_min > 0): donors below the floor are dropped and
+    # the remaining weights renormalised to the column's original mass. This is
+    # an approximation (the counterfactual loses the dropped donors' small
+    # contribution) traded for a large reduction in rows when solvers spread
+    # tiny positive weights over hundreds of donors.
+    if (w_min > 0) {
+      for (j0 in seq_len(J0)) {
+        wcol <- W_chr[, j0]; tr <- as.character(treated_ids[j0])
+        dn <- rownames(W_chr) != tr
+        keep <- dn & is.finite(wcol) & wcol >= w_min
+        mass_all <- sum(wcol[dn], na.rm = TRUE); mass_keep <- sum(wcol[keep])
+        if (mass_keep > 0) { wcol[dn & !keep] <- 0; wcol[keep] <- wcol[keep] * mass_all / mass_keep; W_chr[, j0] <- wcol }
+      }
+      W <- W_chr
     }
-    W <- W_chr
+    pseudo_ids <- lapply(seq_len(J0), function(j0) {
+      tr <- as.character(treated_ids[j0])
+      wcol <- W_chr[, j0]
+      keep <- rownames(W_chr)[is.finite(wcol) & wcol > 0 & rownames(W_chr) != tr]
+      keep <- keep[keep %in% id_controls]
+      if (!length(keep)) keep <- id_controls              # degenerate: fall back to all controls
+      c(tr, keep)
+    })
+
+    dta_idx <- data.table::data.table(
+      id  = as.character(dta[[id_col]]),
+      wID = dta[[time_col]]
+    )
+
+    X_list <- vector("list", J0)
+    y_list <- vector("list", J0)
+    w_list <- vector("list", J0)
+
+    if (verbose) message("Creating treated-specific pseudo-panels...")
+
+    data.table::setDT(dta_idx)
+    stopifnot(nrow(dta_idx) == nrow(X_mm))
+    stopifnot(length(y_vec) == nrow(dta_idx))
+    stopifnot(all(c("id", "wID") %in% names(dta_idx)))
+
+    dta_idx[, id := as.character(id)]
+    wn <- rownames(W)
+    if (is.null(wn)) stop("W must have rownames = unit ids.")
+    if (!is.character(wn)) wn <- as.character(wn)
+    rownames(W) <- wn
+
+    id_vec <- dta_idx[["id"]]
+
+    row_idx_list <- vector("list", J0)
+    for (j0 in seq_len(J0)) {
+      ids_j <- pseudo_ids[[j0]]
+      row_idx_list[[j0]] <- which(id_vec %chin% ids_j)
+      if (length(row_idx_list[[j0]]) == 0L)
+        stop(sprintf("Pseudo-panel %d has zero rows.", j0))
+    }
+
+    xid_chunks <- vector("list", J0)
+
+    for (j0 in seq_len(J0)) {
+      tr   <- as.character(treated_ids[j0])
+      ridx <- row_idx_list[[j0]]
+
+      Xj <- X_mm[ridx, , drop = FALSE]
+      yj <- y_vec[ridx]
+
+      wcol <- W[, j0]
+      wj   <- as.numeric(wcol[id_vec[ridx]])
+      wj[id_vec[ridx] == tr] <- 1
+
+      X_list[[j0]] <- Xj
+      y_list[[j0]] <- yj
+      w_list[[j0]] <- wj
+
+      xid_chunks[[j0]] <- dta_idx[ridx, .(id, wID)]
+    }
+
+    X_idlist <- data.table::rbindlist(xid_chunks, use.names = TRUE, fill = TRUE)
   }
-  pseudo_ids <- lapply(seq_len(J0), function(j0) {
-    tr <- as.character(treated_ids[j0])
-    wcol <- W_chr[, j0]
-    keep <- rownames(W_chr)[is.finite(wcol) & wcol > 0 & rownames(W_chr) != tr]
-    keep <- keep[keep %in% id_controls]
-    if (!length(keep)) keep <- id_controls              # degenerate: fall back to all controls
-    c(tr, keep)
-  })
-
-  dta_idx <- data.table::data.table(
-    id  = as.character(dta[[id_col]]),
-    wID = dta[[time_col]]
-  )
-
-  X_list <- vector("list", J0)
-  y_list <- vector("list", J0)
-  w_list <- vector("list", J0)
-
-  if (verbose) message("Creating treated-specific pseudo-panels...")
-
-  data.table::setDT(dta_idx)
-  stopifnot(nrow(dta_idx) == nrow(X_mm))
-  stopifnot(length(y_vec) == nrow(dta_idx))
-  stopifnot(all(c("id", "wID") %in% names(dta_idx)))
-
-  dta_idx[, id := as.character(id)]
-  wn <- rownames(W)
-  if (is.null(wn)) stop("W must have rownames = unit ids.")
-  if (!is.character(wn)) wn <- as.character(wn)
-  rownames(W) <- wn
-
-  id_vec <- dta_idx[["id"]]
-
-  row_idx_list <- vector("list", J0)
-  for (j0 in seq_len(J0)) {
-    ids_j <- pseudo_ids[[j0]]
-    row_idx_list[[j0]] <- which(id_vec %chin% ids_j)
-    if (length(row_idx_list[[j0]]) == 0L)
-      stop(sprintf("Pseudo-panel %d has zero rows.", j0))
-  }
-
-  xid_chunks <- vector("list", J0)
-
-  for (j0 in seq_len(J0)) {
-    tr   <- as.character(treated_ids[j0])
-    ridx <- row_idx_list[[j0]]
-
-    Xj <- X_mm[ridx, , drop = FALSE]
-    yj <- y_vec[ridx]
-
-    wcol <- W[, j0]
-    wj   <- as.numeric(wcol[id_vec[ridx]])
-    wj[id_vec[ridx] == tr] <- 1
-
-    X_list[[j0]] <- Xj
-    y_list[[j0]] <- yj
-    w_list[[j0]] <- wj
-
-    xid_chunks[[j0]] <- dta_idx[ridx, .(id, wID)]
-  }
-
-  X_idlist <- data.table::rbindlist(xid_chunks, use.names = TRUE, fill = TRUE)
 
   # Do NOT materialise X_block / Y_block / W_block.
   # With J0 ~ 1879 and n_obs ~ 83k the stacked matrix has ~157M rows
@@ -347,7 +407,10 @@ prepare_data_general <- function(dta,
     second_stage = second_stage,
     first_stage  = first_stage,   # <-- now stored as string
     treat_type   = treat_type,
-    tr_col       = tr_col
+    tr_col       = tr_col,
+    likelihood   = likelihood,
+    L            = L,
+    post         = post
   )
 
   if (second_stage != "none") {

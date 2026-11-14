@@ -19,7 +19,10 @@ prepare_data_general(
   first_stage = c("none", "selection_probit", "selection_probit_bayes", "treat_iv"),
   treat_threshold = 0,
   verbose = TRUE,
-  w_min = 0
+  w_min = 0,
+  likelihood = c("pseudo_panel", "conditional"),
+  L = NULL,
+  post = NULL
 )
 }
 \arguments{
@@ -65,6 +68,36 @@ in f.X: \code{outcome ~ covars | treatment ~ selection_covars}.}
 \item{w_min}{Numeric; donors with weight below this are dropped from each
 treated unit's pseudo-panel and the remaining weights renormalised. 0
 (default) keeps every positive-weight donor exactly.}
+
+\item{likelihood}{\code{"pseudo_panel"} (default, the original behaviour) or
+\code{"conditional"}.
+\describe{
+\item{"pseudo_panel"}{Each treated unit is stacked with its
+positive-weight donors over all periods, donor rows weighted by W and
+treated as observations. Donors that are themselves columns of W are
+dropped without renormalising. With \code{f.X = y ~ treatment} there are no
+unit or period effects, so tau absorbs the pre-period level gap between
+a treated unit and its synthetic control, and posterior intervals are
+too narrow. Warns once per session.}
+\item{"conditional"}{The synthetic-control (gap-series) likelihood,
+conditional on donor paths and weights. For each treated unit the
+within-period contrast (1, -w) is applied to the outcome and to every
+column of the design over event times \code{-L..-1} and \code{post}: period
+effects drop out, the intercept column becomes the unit-effect
+contrast (set to 1), the treatment column becomes the unit's own
+treatment indicator, and other covariates enter as treated-minus-
+synthetic differences. With \code{f.X = y ~ 1 + treatment}, OLS on each
+unit's rows gives the post-minus-pre mean of the gap series (the
+de-meaned synthetic-control estimate), and the posterior is the
+posterior for the gap series. All positive-weight donors are used,
+including treated units that adopt after the window; a donor treated
+inside the window is an error. Time must be in integer periods.
+Requires \code{first_stage = "none"}.}
+}}
+
+\item{L}{Number of pre-treatment periods for \code{likelihood = "conditional"}.}
+
+\item{post}{Post-treatment event times (>= 0) for \code{likelihood = "conditional"}, e.g. \code{1:K} to match augMultiSynth's \code{eval_avg_1K()}.}
 }
 \value{
 list with Y_block, X_block, W, Z_block (optional), instruments
