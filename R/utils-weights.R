@@ -56,7 +56,7 @@ align_weights_matrix <- function(W,
                                  id_universe,
                                  treated_ids = NULL,
                                  fill_value = 0) {
-  W <- validate_weights_matrix(W, require_dimnames = TRUE)
+  W <- validate_weights_matrix(W, require_dimnames = TRUE, nonneg = FALSE)
 
   id_universe <- as.character(id_universe)
   if (anyDuplicated(id_universe)) stop("id_universe contains duplicates.")
@@ -87,7 +87,7 @@ align_weights_matrix <- function(W,
 #' @return Character vector of treated unit ids (colnames).
 #' @export
 treated_ids_from_W <- function(W) {
-  W <- validate_weights_matrix(W, require_dimnames = TRUE)
+  W <- validate_weights_matrix(W, require_dimnames = TRUE, nonneg = FALSE)
   colnames(W)
 }
 
@@ -103,10 +103,15 @@ treated_ids_from_W <- function(W) {
 #' @param fit augMultiSynth-like object.
 #' @param id_universe Vector of all unit ids (row universe + order).
 #' @param self_weight Numeric; value set on the treated unit row for each treated column.
+#' @param allow_negative Logical; allow negative donor weights, as produced by
+#'   augMultiSynth's ridge augmentation (`multiout_synth(augment = "ridge")`). Defaults
+#'   to `TRUE` when the fit is augmented. Negative weights can only be used with
+#'   `prepare_data_general(likelihood = "conditional")`.
 #'
 #' @return Canonical weights matrix.
 #' @export
-build_W_from_augMultiSynth <- function(fit, id_universe, self_weight = 1) {
+build_W_from_augMultiSynth <- function(fit, id_universe, self_weight = 1,
+                                       allow_negative = !is.null(fit$augment)) {
   if (is.null(fit$treated_unit_ids) || is.null(fit$donor_ids) || is.null(fit$weights)) {
     stop("fit must contain treated_unit_ids, donor_ids, and weights.")
   }
@@ -137,7 +142,7 @@ build_W_from_augMultiSynth <- function(fit, id_universe, self_weight = 1) {
     W[tr_idx, j0] <- self_weight
   }
 
-  validate_weights_matrix(W, require_dimnames = TRUE)
+  validate_weights_matrix(W, require_dimnames = TRUE, nonneg = !isTRUE(allow_negative))
 }
 
 #' Coerce augsynth::multisynth object into canonical weights matrix

@@ -91,7 +91,8 @@ unit's rows gives the post-minus-pre mean of the gap series (the
 de-meaned synthetic-control estimate), and the posterior is the
 posterior for the gap series. All positive-weight donors are used,
 including treated units that adopt after the window; a donor treated
-inside the window is an error. Time must be in integer periods.
+inside the window is an error. Negative weights (augmented synthetic
+control) are allowed: the contrast is linear in the weights. Time must be in integer periods.
 Requires \code{first_stage = "none"}.}
 }}
 

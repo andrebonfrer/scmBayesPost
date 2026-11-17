@@ -78,7 +78,8 @@
 #'       de-meaned synthetic-control estimate), and the posterior is the
 #'       posterior for the gap series. All positive-weight donors are used,
 #'       including treated units that adopt after the window; a donor treated
-#'       inside the window is an error. Time must be in integer periods.
+#'       inside the window is an error. Negative weights (augmented synthetic
+#'       control) are allowed: the contrast is linear in the weights. Time must be in integer periods.
 #'       Requires `first_stage = "none"`.}
 #'   }
 #' @param L Number of pre-treatment periods for `likelihood = "conditional"`.
@@ -166,7 +167,12 @@ prepare_data_general <- function(dta,
       stop("Unrecognized res structure. Provide W directly or add a coercer.")
     }
   }
-  W <- validate_weights_matrix(W, require_dimnames = TRUE)
+  if (likelihood == "pseudo_panel" && any(W < -1e-12, na.rm = TRUE)) {
+    stop("W contains negative weights (e.g. augmented synthetic control); the pseudo-panel likelihood ",
+         "uses W as regression weights and needs them nonnegative. Use likelihood = 'conditional'.",
+         call. = FALSE)
+  }
+  W <- validate_weights_matrix(W, require_dimnames = TRUE, nonneg = FALSE)
   W <- align_weights_matrix(W, id_universe = id_universe)
 
   treated_ids <- colnames(W)

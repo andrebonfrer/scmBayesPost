@@ -131,3 +131,28 @@ test_that("the pseudo-panel likelihood warns once per session", {
   expect_silent(pp())
   expect_silent(cl_prep(p$d, W, L = 10, post = 1:5))
 })
+
+test_that("negative (augmented) weights work in the conditional likelihood only", {
+  p <- cl_panel(); W <- cl_W(p); L <- 10; post <- 1:5
+  # augmented-style weights: add a sum-zero correction with negative entries
+  set.seed(11)
+  never <- rownames(W)[(p$n_tr + p$n_late + 1):p$N]
+  for (j in seq_len(p$n_tr)) {
+    corr <- stats::rnorm(length(never), sd = 0.05); corr <- corr - mean(corr)
+    W[never, j] <- W[never, j] + corr
+  }
+  expect_true(any(W < 0))
+  g <- cl_prep(p$d, W, L = L, post = post)
+  hg <- hand_gap(p, W, L, post)
+  expect_equal(unlist(g$y_list), hg$y, tolerance = 1e-12)
+  expect_error(prepare_data_general(dta = p$d, W = W, y_name = "y", f.X = y ~ 1 + D, id_col = "id",
+                                    time_col = "t", tr_col = "D", verbose = FALSE),
+               "negative weights")
+  fit <- list(treated_unit_ids = colnames(W)[1:2],
+              donor_ids = list(never, never), weights = list(W[never, 1], W[never, 2]),
+              augment = list(method = "ridge"))
+  Wb <- build_W_from_augMultiSynth(fit, id_universe = rownames(W))
+  expect_true(any(Wb < 0))
+  expect_error(build_W_from_augMultiSynth(fit, id_universe = rownames(W), allow_negative = FALSE),
+               "negative")
+})

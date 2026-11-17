@@ -1,3 +1,13 @@
+# scmBayesPost 0.4.9
+
+- The conditional likelihood (`prepare_data_general(likelihood = "conditional")`) accepts
+  negative donor weights, as produced by augMultiSynth's ridge-augmented synthetic control
+  (`multiout_synth(augment = "ridge")`, augMultiSynth >= 0.3.9). The contrast is linear in the
+  weights, so the gap-series likelihood is unchanged; donors with any nonzero weight are used.
+- `build_W_from_augMultiSynth()` gains `allow_negative` (default `TRUE` for augmented fits).
+- The pseudo-panel likelihood stops with an explanatory error if `W` has negative weights,
+  since it uses them as regression weights.
+
 # scmBayesPost 0.4.8
 
 ## New features

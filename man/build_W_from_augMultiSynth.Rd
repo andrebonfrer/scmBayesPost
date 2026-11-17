@@ -4,7 +4,12 @@
 \alias{build_W_from_augMultiSynth}
 \title{Convert augMultiSynth-style donor lists into a dense weights matrix}
 \usage{
-build_W_from_augMultiSynth(fit, id_universe, self_weight = 1)
+build_W_from_augMultiSynth(
+  fit,
+  id_universe,
+  self_weight = 1,
+  allow_negative = !is.null(fit$augment)
+)
 }
 \arguments{
 \item{fit}{augMultiSynth-like object.}
@@ -12,6 +17,11 @@ build_W_from_augMultiSynth(fit, id_universe, self_weight = 1)
 \item{id_universe}{Vector of all unit ids (row universe + order).}
 
 \item{self_weight}{Numeric; value set on the treated unit row for each treated column.}
+
+\item{allow_negative}{Logical; allow negative donor weights, as produced by
+augMultiSynth's ridge augmentation (\code{multiout_synth(augment = "ridge")}). Defaults
+to \code{TRUE} when the fit is augmented. Negative weights can only be used with
+\code{prepare_data_general(likelihood = "conditional")}.}
 }
 \value{
 Canonical weights matrix.

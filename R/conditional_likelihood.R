@@ -64,9 +64,9 @@
     }
 
     wcol <- W[, j0]
-    keep <- is.finite(wcol) & wcol > 0 & wn != tr
+    keep <- is.finite(wcol) & wcol != 0 & wn != tr          # negative weights allowed (augmentation)
     dn <- wn[keep]; wd <- as.numeric(wcol[keep]); nd <- length(dn)
-    if (!nd) stop(sprintf("Treated unit '%s' has no positive-weight donors in W.", tr))
+    if (!nd) stop(sprintf("Treated unit '%s' has no nonzero-weight donors in W.", tr))
     if (abs(sum(wd) - 1) > mass_tol) bad_mass <- c(bad_mass, tr)
 
     R_d <- match(paste(rep(dn, times = n_ev), rep(per, each = nd), sep = "\r"), key)
